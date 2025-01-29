@@ -177,6 +177,7 @@ class VisionMLP(linen.Module):
 
 def _get_obs_state_size(obs_size: types.ObservationSize, obs_key: str) -> int:
   obs_size = obs_size[obs_key] if isinstance(obs_size, Mapping) else obs_size
+  db = jax.tree_util.tree_flatten(obs_size)
   return jax.tree_util.tree_flatten(obs_size)[0][-1]
 
 
@@ -215,12 +216,14 @@ def make_value_network(
     preprocess_observations_fn: types.PreprocessObservationFn = types.identity_observation_preprocessor,
     hidden_layer_sizes: Sequence[int] = (256, 256),
     activation: ActivationFn = linen.relu,
+    layer_norm: bool = False,
     obs_key: str = 'state',
 ) -> FeedForwardNetwork:
   """Creates a value network."""
   value_module = MLP(
       layer_sizes=list(hidden_layer_sizes) + [1],
       activation=activation,
+      layer_norm=layer_norm,
       kernel_init=jax.nn.initializers.lecun_uniform(),
   )
 

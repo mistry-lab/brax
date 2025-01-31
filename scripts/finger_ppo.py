@@ -2,6 +2,7 @@ import os
 import importlib
 import functools
 import hydra
+import pathlib
 from hydra.core.hydra_config import HydraConfig
 from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
@@ -25,7 +26,8 @@ def create_wandb_run(
         seed: int,
         notes: str | None,
         job_config: dict, 
-        run_id=None
+        run_id: str,
+        resume: bool = False
     ):
 
     name = f"{alg_name}_{env_name}_sweep_{seed}"
@@ -41,8 +43,16 @@ def create_wandb_run(
         name=name,
         notes=notes,
         id=run_id,
-        resume=run_id is not None,
+        resume=resume,
     )
+
+def get_time_from_path(path: str):
+    parts = pathlib.Path(path).parts
+
+    date = parts[-2]
+    time = parts[-1]
+
+    return f"{date}T{time}"
 
 def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metrics: dict):
     times.append(datetime.now())
@@ -59,8 +69,8 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
-    logdir = HydraConfig.get()["runtime"]["output_dir"]
-    logdir = os.path.join(logdir, cfg.general.logdir)
+    hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
+    logdir = os.path.join(hydra_logdir, cfg.general.logdir)
     writer = SummaryWriter(logdir)
 
     times = [datetime.now()]
@@ -77,7 +87,9 @@ def train(cfg: DictConfig):
         env_name=cfg.env.name,
         seed=cfg.general.seed,
         notes=cfg.wandb.notes,
-        job_config=cfg_full
+        job_config=cfg_full,
+        run_id=get_time_from_path(hydra_logdir),
+        resume=cfg.wandb.resume
     )
 
     env = get_environment(cfg.env.name)

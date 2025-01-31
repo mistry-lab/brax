@@ -9,5 +9,6 @@ general:
 
 wandb:
   project: fd_brax
-  entity: alexanderwebb03-university-of-edinburgh
+  entity: mistry-lab
   group: ${alg.name}
+  resume: False

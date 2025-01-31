@@ -1,27 +1,40 @@
-from jax import config
 import os
-import argparse
+import importlib
+import functools
+import hydra
+from hydra.core.hydra_config import HydraConfig
+from datetime import datetime
+from omegaconf import DictConfig, OmegaConf
+from typing import List
 
 import wandb
 from tensorboardX import SummaryWriter
 
-from datetime import datetime
-import functools
-
-from brax.training.agents.ppo import train as ppo
-from brax.envs.fd.finger import Finger
+from jax import config
+from brax.envs.fd import get_environment
 
 config.update('jax_default_matmul_precision', 'high')
 config.update("jax_enable_x64", True)
 
-def create_wandb_run(alg_name, env_name, seed, notes, run_id=None):
+def create_wandb_run(
+        project: str,
+        group: str,
+        entity: str,
+        alg_name: str,
+        env_name: str,
+        seed: int,
+        notes: str | None,
+        job_config: dict, 
+        run_id=None
+    ):
 
     name = f"{alg_name}_{env_name}_sweep_{seed}"
 
     return wandb.init(
-        project="Brax",
-        group="analytic_gradients",
-        entity="alexanderwebb03-university-of-edinburgh",
+        project=project,
+        config=job_config,
+        group=group,
+        entity=entity,
         sync_tensorboard=True,
         monitor_gym=True,
         save_code=True,
@@ -31,9 +44,8 @@ def create_wandb_run(alg_name, env_name, seed, notes, run_id=None):
         resume=run_id is not None,
     )
 
-def progress(times, writer, num_steps, metrics):
+def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metrics: dict):
     times.append(datetime.now())
-    print(num_steps, metrics)
 
     log_scalar = lambda key, value: writer.add_scalar(f"{key}", value, num_steps)
     for reward in ["reward"]:
@@ -45,36 +57,36 @@ def progress(times, writer, num_steps, metrics):
 
     writer.flush()
 
-def main():
-    env = Finger()
-
-    log_dir = os.path.join("log")
-    writer = SummaryWriter(log_dir)
+@hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
+def train(cfg: DictConfig):
+    logdir = HydraConfig.get()["runtime"]["output_dir"]
+    logdir = os.path.join(logdir, cfg.general.logdir)
+    writer = SummaryWriter(logdir)
 
     times = [datetime.now()]
-    
-    seed = 32
-    create_wandb_run("shac2", "finger", seed, "test run")
 
-    make_inference_fn, params, _ = ppo.train(
+    alg_module = importlib.import_module(cfg.alg.module_path)
+    algorithm_train = getattr(alg_module, "train")
+
+    cfg_full = OmegaConf.to_container(cfg, resolve=True)
+    create_wandb_run(
+        project=cfg.wandb.project,
+        group=cfg.wandb.group,
+        entity=cfg.wandb.entity,
+        alg_name=cfg.alg.name,
+        env_name=cfg.env.name,
+        seed=cfg.general.seed,
+        notes=cfg.wandb.notes,
+        job_config=cfg_full
+    )
+
+    env = get_environment(cfg.env.name)
+    make_inference_fn, params, _ = algorithm_train(
+        **cfg.alg.params,
         environment=env,
         progress_fn=functools.partial(progress, times, writer),
-        num_timesteps=50_000_000,
-        num_evals=20,
-        reward_scaling=5,
-        episode_length=1000,
-        normalize_observations=True,
-        action_repeat=1,
-        unroll_length=30,
-        num_minibatches=16,
-        num_updates_per_batch=8,
-        discounting=0.95,
-        learning_rate=3e-4,
-        entropy_cost=1e-2,
-        num_envs=2048,
-        batch_size=512,
-        seed=seed
+        seed=cfg.general.seed
     )
 
 if __name__=='__main__':
-    main()
+    train()

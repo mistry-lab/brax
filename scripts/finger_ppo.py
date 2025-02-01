@@ -70,14 +70,6 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
-    logdir = os.path.join(hydra_logdir, cfg.general.logdir)
-    writer = SummaryWriter(logdir)
-
-    times = [datetime.now()]
-
-    alg_module = importlib.import_module(cfg.alg.module_path)
-    algorithm_train = getattr(alg_module, "train")
-
     cfg_full = OmegaConf.to_container(cfg, resolve=True)
     create_wandb_run(
         project=cfg.wandb.project,
@@ -91,6 +83,14 @@ def train(cfg: DictConfig):
         run_id=get_time_from_path(hydra_logdir),
         resume=cfg.wandb.resume
     )
+
+    logdir = os.path.join(hydra_logdir, cfg.general.logdir)
+    writer = SummaryWriter(logdir)
+
+    times = [datetime.now()]
+
+    alg_module = importlib.import_module(cfg.alg.module_path)
+    algorithm_train = getattr(alg_module, "train")
 
     env = get_environment(cfg.env.name)
     make_inference_fn, params, _ = algorithm_train(

@@ -75,6 +75,10 @@ def policy_params(save_directory: os.path, current_step: int, make_policy, param
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
+
+    param_copy_dir = os.path.join(hydra_logdir, "resolved_config.yaml")
+    OmegaConf.save(cfg, param_copy_dir)
+
     cfg_full = OmegaConf.to_container(cfg, resolve=True)
     create_wandb_run(
         project=cfg.wandb.project,

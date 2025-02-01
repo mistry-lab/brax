@@ -1,5 +1,7 @@
 name: ppo
 module_path: brax.training.agents.ppo.train
+make_inference_path: brax.training.agents.ppo.networks
+make_network_name: make_ppo_networks
 
 params:
   num_timesteps: 50_000_000

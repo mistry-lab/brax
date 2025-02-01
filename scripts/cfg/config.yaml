@@ -5,6 +5,7 @@ defaults:
 
 general:
   logdir: logs
+  param_dir: params
   seed: 42
 
 wandb:

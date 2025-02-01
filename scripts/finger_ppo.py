@@ -12,6 +12,7 @@ import wandb
 from tensorboardX import SummaryWriter
 
 from jax import config
+from brax.io import model
 from brax.envs.fd import get_environment
 
 config.update('jax_default_matmul_precision', 'high')
@@ -67,6 +68,10 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 
     writer.flush()
 
+def policy_params(save_directory: os.path, current_step: int, make_policy, params):
+    save_path = os.path.join(save_directory, f"policy_params_step_{current_step}")
+    model.save_params(save_path, params)
+
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
@@ -92,13 +97,19 @@ def train(cfg: DictConfig):
     alg_module = importlib.import_module(cfg.alg.module_path)
     algorithm_train = getattr(alg_module, "train")
 
+    param_dir = os.path.join(hydra_logdir, cfg.general.param_dir)
+    os.makedirs(param_dir)
+
     env = get_environment(cfg.env.name)
     make_inference_fn, params, _ = algorithm_train(
         **cfg.alg.params,
         environment=env,
         progress_fn=functools.partial(progress, times, writer),
+        policy_params_fn=functools.partial(policy_params, param_dir),
         seed=cfg.general.seed
     )
+
+    wandb.finish()
 
 if __name__=='__main__':
     train()

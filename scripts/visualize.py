@@ -6,6 +6,7 @@ import importlib
 import yaml
 import argparse
 
+import argcomplete
 from paramiko import SSHClient
 import jax.numpy as jnp
 import mujoco
@@ -80,13 +81,13 @@ def generate_trajctory(env_reset, env_step, inference_fn):
 
 def get_paths():
     parser = argparse.ArgumentParser(description='FD visualization script.')
+    argcomplete.autocomplete(parser)
     parser.add_argument('-p','--param-path', help='Path to policy parameters.')
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
     args = parser.parse_args()
 
     if args.config_path and args.param_path:
-        return (os.path.join(config_dir, args.config_path),
-                os.path.join(param_dir, args.param_path))
+        return args.config_path, args.param_path
 
     return get_most_recent_run_parameters()
 

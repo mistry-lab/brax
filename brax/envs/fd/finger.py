@@ -18,7 +18,7 @@ class Finger(FDEnv):
     def __init__(self, eps: float = 1e-6):
         path = epath.resource_path('brax') / 'envs/assets/finger_mjx.xml'
         self.model = mujoco.MjModel.from_xml_path(str(path))
-        super().__init__(self.model, {"qpos", "qvel", "ctrl"}, eps)
+        super().__init__(self.model, {"qpos", "qvel", "ctrl", "sensordata"}, eps)
 
     @property
     def observation_size(self) -> ObservationSize:
@@ -96,7 +96,7 @@ class Finger(FDEnv):
         )
 
     def _get_observation(self, dx: mjx.Data):
-        return jnp.concatenate([dx.qpos, dx.qvel])
+        return jnp.concatenate([dx.qpos, dx.qvel, dx.sensordata])
 
     def generate_initial_conditions(self, rng: jax.Array) -> State:
         # Solution of IK
@@ -105,7 +105,7 @@ class Finger(FDEnv):
 
         # Reference target position in spinner local frame R_s
         _, key = jax.random.split(key, num=2)
-        theta_l = jax.random.uniform(key, (1,), minval=0.55, maxval=2.55) # Polar Coord
+        theta_l = jax.random.uniform(key, (1,), minval=0.6, maxval=2.5) # Polar Coord
         l_spinner = 0.22
         # r = jax.random.uniform(key, (1,), minval=l_spinner + 0.01, maxval=l_spinner + 0.01)
         r_l = l_spinner
@@ -142,11 +142,19 @@ class Finger(FDEnv):
     def running_cost(self, dx):
         pos_finger = dx.qpos[2]
         u = dx.ctrl
-        return 0.002 * jnp.sum(u ** 2) + 0.001 * pos_finger ** 2
+
+        touch = dx.sensordata[0]
+        p_finger = dx.sensordata[1:4]
+        p_target = dx.sensordata[4:7]
+        return  0.00005 * jnp.sum(u ** 2) + 0.1 * jnp.sum((p_finger - p_target)**2) + 0.001 * touch * pos_finger **2
 
     def terminal_cost(self, dx):
         pos_finger = dx.qpos[2]
-        return 4 * pos_finger ** 2
+
+        touch = dx.sensordata[0]
+        p_finger = dx.sensordata[1:4]
+        p_target = dx.sensordata[4:7]
+        return  10. * jnp.sum((p_finger - p_target)**2) + 4.* touch * pos_finger**2
 
     def set_control(self, dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))

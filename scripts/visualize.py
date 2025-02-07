@@ -23,10 +23,9 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 config_dir = os.path.join(script_dir, "remote_cfg")
 param_dir = os.path.join(script_dir, "params")
 
-def get_most_recent_run_parameters():
+def get_most_recent_run_parameters(address: str):
     usename = "alexaldermanwebb"
-    address = "129.215.91.20"
-    
+
     client = SSHClient()
     client.load_system_host_keys()
     client.connect(address, username=usename)
@@ -82,6 +81,7 @@ def generate_trajctory(env_reset, env_step, inference_fn):
 def get_paths():
     parser = argparse.ArgumentParser(description='FD visualization script.')
     argcomplete.autocomplete(parser)
+    parser.add_argument('-a', '--address', help='Address from which to scp config and parameters.')
     parser.add_argument('-p','--param-path', help='Path to policy parameters.')
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
     args = parser.parse_args()
@@ -89,7 +89,7 @@ def get_paths():
     if args.config_path and args.param_path:
         return args.config_path, args.param_path
 
-    return get_most_recent_run_parameters()
+    return get_most_recent_run_parameters(args.address)
 
 def main():
     run_config_path, policy_parameters_path = get_paths()

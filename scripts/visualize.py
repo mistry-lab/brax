@@ -23,12 +23,12 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 config_dir = os.path.join(script_dir, "remote_cfg")
 param_dir = os.path.join(script_dir, "params")
 
-def get_most_recent_run_parameters(address: str):
+def get_most_recent_run_parameters(address: str, password: str | None):
     usename = "alexaldermanwebb"
 
     client = SSHClient()
     client.load_system_host_keys()
-    client.connect(address, username=usename)
+    client.connect(address, username=usename, password=password)
     stdin, stdout, stderr = client.exec_command('./brax/brax/scripts/newest_train_parameters.sh')
     parameter_path = pathlib.Path(stdout.read().strip().decode("utf-8"))
     train_dir = parameter_path.parents[1]
@@ -37,15 +37,20 @@ def get_most_recent_run_parameters(address: str):
 
     output_config = os.path.join(config_dir, isotime)
     os.makedirs(output_config, exist_ok=True)
-    subprocess.call(["sh", "./sync_config.sh", train_dir / "cfg" / remote_config_filename, output_config])
+    subprocess.call(["./sync_config.sh", train_dir / remote_config_filename, output_config, address, password])
 
     local_params = os.path.join(param_dir, isotime)
     os.makedirs(local_params, exist_ok=True)
-    output = subprocess.check_output([
-        f"script -q -c 'scp {usename}@{address}:{parameter_path} {local_params}' </dev/null",
+
+    scp_command = f"scp {usename}@{address}:{parameter_path} {local_params}"
+    if password:
+        scp_command = f"sshpass -p {password} {scp_command}"
+
+    subprocess.call([
+        f"script -q -c '{scp_command}' </dev/null",
     ], shell=True)
 
-    policy_params_name = output.decode('utf-8').strip().split(" ")[0]
+    policy_params_name = parameter_path.name
 
     return \
         os.path.join(output_config, remote_config_filename), \
@@ -82,6 +87,8 @@ def get_paths():
     parser = argparse.ArgumentParser(description='FD visualization script.')
     argcomplete.autocomplete(parser)
     parser.add_argument('-a', '--address', help='Address from which to scp config and parameters.')
+    parser.add_argument('--password', help='Password used for SSH connection.')
+
     parser.add_argument('-p','--param-path', help='Path to policy parameters.')
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
     args = parser.parse_args()
@@ -89,7 +96,10 @@ def get_paths():
     if args.config_path and args.param_path:
         return args.config_path, args.param_path
 
-    return get_most_recent_run_parameters(args.address)
+    if not args.address:
+        args.address = os.environ["ADDRESS"]
+
+    return get_most_recent_run_parameters(args.address, args.password)
 
 def main():
     run_config_path, policy_parameters_path = get_paths()
@@ -100,7 +110,7 @@ def main():
     policy_params = model.load_params(policy_parameters_path)
     policy_params = (
         policy_params[0],
-        policy_params[1].policy
+        policy_params[1]
     )
 
     alg_module = importlib.import_module(run_config["alg"]["make_inference_path"])

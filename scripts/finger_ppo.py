@@ -68,10 +68,6 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 
     writer.flush()
 
-def policy_params(save_directory: os.path, current_step: int, make_policy, params):
-    save_path = os.path.join(save_directory, f"policy_params_step_{current_step}")
-    model.save_params(save_path, params)
-
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
@@ -109,7 +105,7 @@ def train(cfg: DictConfig):
         **cfg.alg.params,
         environment=env,
         progress_fn=functools.partial(progress, times, writer),
-        policy_params_fn=functools.partial(policy_params, param_dir),
+        save_checkpoint_path=param_dir,
         seed=cfg.general.seed
     )
 

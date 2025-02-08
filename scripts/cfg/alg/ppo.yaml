@@ -1,4 +1,5 @@
 name: ppo
+network_config_filename: ppo_network_config.json
 module_path: brax.training.agents.ppo.train
 checkpoint_path: brax.training.agents.ppo.checkpoint
 

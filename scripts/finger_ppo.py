@@ -75,19 +75,29 @@ def train(cfg: DictConfig):
     param_copy_dir = os.path.join(hydra_logdir, "resolved_config.yaml")
     OmegaConf.save(cfg, param_copy_dir)
 
+    if cfg.general.debug:
+        cfg.alg.params.num_evals = 0
+        cfg.alg.params.num_minibatches = 1
+        cfg.alg.params.num_envs = 1
+        cfg.alg.params.batch_size = 1
+
+        os.environ["CUDA_VISIBLE_DEVICES"]="3"
+
     cfg_full = OmegaConf.to_container(cfg, resolve=True)
-    create_wandb_run(
-        project=cfg.wandb.project,
-        group=cfg.wandb.group,
-        entity=cfg.wandb.entity,
-        alg_name=cfg.alg.name,
-        env_name=cfg.env.name,
-        seed=cfg.general.seed,
-        notes=cfg.wandb.notes,
-        job_config=cfg_full,
-        run_id=get_time_from_path(hydra_logdir),
-        resume=cfg.wandb.resume
-    )
+
+    if not cfg.general.debug:
+        create_wandb_run(
+            project=cfg.wandb.project,
+            group=cfg.wandb.group,
+            entity=cfg.wandb.entity,
+            alg_name=cfg.alg.name,
+            env_name=cfg.env.name,
+            seed=cfg.general.seed,
+            notes=cfg.wandb.notes,
+            job_config=cfg_full,
+            run_id=get_time_from_path(hydra_logdir),
+            resume=cfg.wandb.resume
+        )
 
     logdir = os.path.join(hydra_logdir, cfg.general.logdir)
     writer = SummaryWriter(logdir)
@@ -109,7 +119,8 @@ def train(cfg: DictConfig):
         seed=cfg.general.seed
     )
 
-    wandb.finish()
+    if not cfg.general.debug:
+        wandb.finish()
 
 if __name__=='__main__':
     train()

@@ -115,8 +115,8 @@ def train(cfg: DictConfig):
         **cfg.alg.params,
         environment=env,
         progress_fn=functools.partial(progress, times, writer),
-        save_checkpoint_path=param_dir,
-        seed=cfg.general.seed
+        seed=cfg.general.seed,
+        **{cfg.alg.checkpoint_keyword_arg: param_dir}
     )
 
     if not cfg.general.debug:

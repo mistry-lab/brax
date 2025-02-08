@@ -7,6 +7,7 @@ general:
   logdir: logs
   param_dir: params
   seed: 42
+  debug: false
 
 wandb:
   project: fd_brax

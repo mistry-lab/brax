@@ -4,18 +4,17 @@ import subprocess
 import pathlib
 import importlib
 import yaml
+import json
 import argparse
 
 import argcomplete
+from dotenv import load_dotenv
 from paramiko import SSHClient
-import jax.numpy as jnp
 import mujoco
 from mujoco import viewer
 
 import jax
-from brax.io import model
 from brax.envs.fd import get_environment
-from brax.training.acme import running_statistics
 
 remote_config_filename = "resolved_config.yaml"
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -23,37 +22,48 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 config_dir = os.path.join(script_dir, "remote_cfg")
 param_dir = os.path.join(script_dir, "params")
 
-def get_most_recent_run_parameters(address: str, password: str | None):
-    usename = "alexaldermanwebb"
-
+def get_most_recent_parameters_path(address: str, username: str, password: str):
     client = SSHClient()
     client.load_system_host_keys()
-    client.connect(address, username=usename, password=password)
+    client.connect(address, username=username, password=password)
     stdin, stdout, stderr = client.exec_command('./brax/brax/scripts/newest_train_parameters.sh')
-    parameter_path = pathlib.Path(stdout.read().strip().decode("utf-8"))
-    train_dir = parameter_path.parents[1]
+    return pathlib.Path(stdout.read().strip().decode("utf-8"))
 
-    isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
-
-    output_config = os.path.join(config_dir, isotime)
+def get_config(address: str, remote_training_dir: str, output_filename: str, password: str | None):
+    output_config = os.path.join(config_dir, output_filename)
     os.makedirs(output_config, exist_ok=True)
-    subprocess.call(["./sync_config.sh", train_dir / remote_config_filename, output_config, address, password])
+    subprocess.call(["./sync_config.sh", remote_training_dir / remote_config_filename, output_config, address, password])
 
-    local_params = os.path.join(param_dir, isotime)
+    return os.path.join(output_config, remote_config_filename)
+
+def get_most_recent_parameters(
+        address: str,
+        remote_checkpoint_dir: str,
+        output_filename: str,
+        network_config_filename: str,
+        username: str, 
+        password: str | None):
+    local_params = os.path.join(param_dir, output_filename)
     os.makedirs(local_params, exist_ok=True)
 
-    scp_command = f"scp {usename}@{address}:{parameter_path} {local_params}"
+    alg_config_file = remote_checkpoint_dir.parent / network_config_filename
+    scp_command = f"scp -r {username}@{address}:{remote_checkpoint_dir} {local_params}"
+    alg_scp_command =  f"scp {username}@{address}:{alg_config_file} {local_params}"
     if password:
         scp_command = f"sshpass -p {password} {scp_command}"
+        alg_scp_command = f"sshpass -p {password} {alg_scp_command}"
 
     subprocess.call([
         f"script -q -c '{scp_command}' </dev/null",
     ], shell=True)
 
-    policy_params_name = parameter_path.name
+    subprocess.call([
+        f"script -q -c '{alg_scp_command}' </dev/null",
+    ], shell=True)
+
+    policy_params_name = remote_checkpoint_dir.name
 
     return \
-        os.path.join(output_config, remote_config_filename), \
         os.path.join(local_params, policy_params_name)
 
 def visualise_traj_generic(
@@ -71,9 +81,11 @@ def visualise_traj_generic(
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
-def generate_trajctory(env_reset, env_step, inference_fn):
+def generate_trajectory(env_reset, env_step, inference_fn, seed):
     rollout = []
-    rng = jax.random.PRNGKey(seed=1)
+
+    seed = 0 if seed is None else int(seed)
+    rng = jax.random.PRNGKey(seed=seed)
     state = env_reset(rng=rng)
     for _ in range(1000):
         rollout.append(state.pipeline_state)
@@ -83,7 +95,7 @@ def generate_trajctory(env_reset, env_step, inference_fn):
 
     return rollout
 
-def get_paths():
+def get_command_line_args():
     parser = argparse.ArgumentParser(description='FD visualization script.')
     argcomplete.autocomplete(parser)
     parser.add_argument('-a', '--address', help='Address from which to scp config and parameters.')
@@ -91,49 +103,76 @@ def get_paths():
 
     parser.add_argument('-p','--param-path', help='Path to policy parameters.')
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
+    
+    parser.add_argument('-s', '--seed', help='Seed used to initialize the environment.')
+
     args = parser.parse_args()
 
-    if args.config_path and args.param_path:
-        return args.config_path, args.param_path
-
-    if not args.address:
-        args.address = os.environ["ADDRESS"]
-
-    return get_most_recent_run_parameters(args.address, args.password)
+    return args
 
 def main():
-    run_config_path, policy_parameters_path = get_paths()
-    
-    with open(run_config_path, "r") as f:
-        run_config = yaml.safe_load(f)
+    load_dotenv()
+    args = get_command_line_args()
 
-    policy_params = model.load_params(policy_parameters_path)
-    policy_params = (
-        policy_params[0],
-        policy_params[1]
-    )
+    address = args.address if args.address else os.environ["ADDRESS"]  
+    username = "alexaldermanwebb"
+    path = get_most_recent_parameters_path(address, username, args.password)
 
-    alg_module = importlib.import_module(run_config["alg"]["make_inference_path"])
+    train_dir = path.parents[1]
+    isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
     
-    make_network = getattr(alg_module, run_config["alg"]["make_network_name"])
-    make_inference = getattr(alg_module, "make_inference_fn")
+    run_config = None
+
+    if args.seed:
+        with open("visualize_paths", "r") as f:
+            paths = [line.strip() for line in f.readlines()]
+            config_path, policy_parameters_path = paths
+    else:
+        config_path = get_config(address, train_dir, isotime, args.password)
+
+        with open(config_path, "r") as f:
+            run_config = yaml.safe_load(f)  
+
+        policy_parameters_path = get_most_recent_parameters(
+            address,
+            path,
+            isotime,
+            run_config["alg"]["network_config_filename"],
+            username, 
+            args.password
+        )
+
+        sharding_file = os.path.join(policy_parameters_path, "_sharding")
+        with open(sharding_file, "r") as f:
+            data = json.load(f)
+            for key, value in data.items():
+                parsed_value = json.loads(value)
+                parsed_value["device_str"] = str(jax.local_devices()[0])
+                data[key] = json.dumps(parsed_value)
+
+        pathlib.Path(sharding_file).write_text(json.dumps(data))
+
+    if not run_config:
+        with open(config_path, "r") as f:
+            run_config = yaml.safe_load(f) 
+
+    checkpoint = importlib.import_module(run_config["alg"]["checkpoint_path"])
 
     env = get_environment(run_config["env"]["name"])
     jit_env_reset = jax.jit(env.reset)
 
-    rng = jax.random.PRNGKey(seed=1)
-    env_state = jit_env_reset(rng)
-    obs_shape = env_state.obs.shape
-
-    make_inference_fn = make_inference(
-        make_network(obs_shape, env.action_size, preprocess_observations_fn=running_statistics.normalize)
-    )
-    inference_fn = make_inference_fn(policy_params)
+    load_policy = getattr(checkpoint, "load_policy")
+    inference_fn = load_policy(policy_parameters_path)
 
     jit_env_step = jax.jit(env.step)
     jit_inference_fn = jax.jit(inference_fn)
 
-    trajectory = generate_trajctory(jit_env_reset, jit_env_step, jit_inference_fn)
+    trajectory = generate_trajectory(jit_env_reset, jit_env_step, jit_inference_fn, args.seed)
+
+    with open("visualize_paths", "w") as f:
+        f.writelines(
+            [f"{config_path}\n", policy_parameters_path]
+        )
 
     data = mujoco.MjData(env.model)
     visualise_traj_generic(trajectory, data, env.model)

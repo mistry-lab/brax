@@ -67,7 +67,17 @@ setup(
     ],
     extras_require={
         "develop": ["pytest", "transforms3d"],
-        "scripts": ["hydra-core", "omegaconf", "wandb", "tensorboard", "tensorboardX", "paramiko", "pyyaml", "argcomplete"]
+        "scripts": [
+            "dotenv",
+            "hydra-core",
+            "omegaconf",
+            "wandb",
+            "tensorboard",
+            "tensorboardX",
+            "paramiko",
+            "pyyaml", 
+            "argcomplete"
+        ]
     },
     classifiers=[
         "Development Status :: 4 - Beta",

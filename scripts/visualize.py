@@ -81,9 +81,11 @@ def visualise_traj_generic(
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
-def generate_trajctory(env_reset, env_step, inference_fn):
+def generate_trajectory(env_reset, env_step, inference_fn, seed):
     rollout = []
-    rng = jax.random.PRNGKey(seed=1)
+
+    seed = 0 if seed is None else int(seed)
+    rng = jax.random.PRNGKey(seed=seed)
     state = env_reset(rng=rng)
     for _ in range(1000):
         rollout.append(state.pipeline_state)
@@ -101,6 +103,9 @@ def get_command_line_args():
 
     parser.add_argument('-p','--param-path', help='Path to policy parameters.')
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
+    
+    parser.add_argument('-s', '--seed', help='Seed used to initialize the environment.')
+
     args = parser.parse_args()
 
     return args
@@ -115,29 +120,41 @@ def main():
 
     train_dir = path.parents[1]
     isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
-    config_path = get_config(address, train_dir, isotime, args.password)
+    
+    run_config = None
 
-    with open(config_path, "r") as f:
-        run_config = yaml.safe_load(f)  
+    if args.seed:
+        with open("visualize_paths", "r") as f:
+            paths = [line.strip() for line in f.readlines()]
+            config_path, policy_parameters_path = paths
+    else:
+        config_path = get_config(address, train_dir, isotime, args.password)
 
-    policy_parameters_path = get_most_recent_parameters(
-        address,
-        path,
-        isotime,
-        run_config["alg"]["network_config_filename"],
-        username, 
-        args.password
-    )
+        with open(config_path, "r") as f:
+            run_config = yaml.safe_load(f)  
 
-    sharding_file = os.path.join(policy_parameters_path, "_sharding")
-    with open(sharding_file, "r") as f:
-        data = json.load(f)
-        for key, value in data.items():
-            parsed_value = json.loads(value)
-            parsed_value["device_str"] = str(jax.local_devices()[0])
-            data[key] = json.dumps(parsed_value)
+        policy_parameters_path = get_most_recent_parameters(
+            address,
+            path,
+            isotime,
+            run_config["alg"]["network_config_filename"],
+            username, 
+            args.password
+        )
 
-    pathlib.Path(sharding_file).write_text(json.dumps(data))
+        sharding_file = os.path.join(policy_parameters_path, "_sharding")
+        with open(sharding_file, "r") as f:
+            data = json.load(f)
+            for key, value in data.items():
+                parsed_value = json.loads(value)
+                parsed_value["device_str"] = str(jax.local_devices()[0])
+                data[key] = json.dumps(parsed_value)
+
+        pathlib.Path(sharding_file).write_text(json.dumps(data))
+
+    if not run_config:
+        with open(config_path, "r") as f:
+            run_config = yaml.safe_load(f) 
 
     checkpoint = importlib.import_module(run_config["alg"]["checkpoint_path"])
 
@@ -150,7 +167,12 @@ def main():
     jit_env_step = jax.jit(env.step)
     jit_inference_fn = jax.jit(inference_fn)
 
-    trajectory = generate_trajctory(jit_env_reset, jit_env_step, jit_inference_fn)
+    trajectory = generate_trajectory(jit_env_reset, jit_env_step, jit_inference_fn, args.seed)
+
+    with open("visualize_paths", "w") as f:
+        f.writelines(
+            [f"{config_path}\n", policy_parameters_path]
+        )
 
     data = mujoco.MjData(env.model)
     visualise_traj_generic(trajectory, data, env.model)

@@ -9,9 +9,6 @@ from jax._src.util import unzip2
 
 from brax.fd.fd_cache import FDCache
 
-config.update('jax_default_matmul_precision', 'high')
-config.update("jax_enable_x64", True)
-
 def build_fd_cache(
     dx_ref: mjx.Data,
     target_fields: Optional[Set[str]] = None,

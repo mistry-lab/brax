@@ -5,17 +5,18 @@ checkpoint_path: brax.training.agents.ppo.checkpoint
 checkpoint_keyword_arg: save_checkpoint_path
 
 params:
-  num_timesteps: 50_000_000
-  num_evals: 20
-  reward_scaling: 5
-  episode_length: 1000
-  normalize_observations: True
-  action_repeat: 1
+  num_timesteps: ${env.config.num_timesteps}
+  num_evals: ${env.config.num_evals}
+  reward_scaling: ${env.config.reward_scaling}
+  episode_length: ${env.config.episode_length}
+  normalize_observations: ${env.config.normalize_observations}
+  action_repeat: ${env.config.action_repeat}
+
   unroll_length: 30
   num_minibatches: 16
   num_updates_per_batch: 8
   discounting: 0.95
   learning_rate: 3e-4
   entropy_cost: 1e-2
-  num_envs: 2048
   batch_size: 512
+  num_envs: 2048

@@ -12,7 +12,6 @@ import wandb
 from tensorboardX import SummaryWriter
 
 from jax import config
-from brax.io import model
 from brax.envs.fd import get_environment
 
 config.update('jax_default_matmul_precision', 'high')
@@ -73,7 +72,7 @@ def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
 
     param_copy_dir = os.path.join(hydra_logdir, "resolved_config.yaml")
-    OmegaConf.save(cfg, param_copy_dir)
+    OmegaConf.save(cfg, param_copy_dir, resolve=True)
 
     if cfg.general.debug:
         cfg.alg.params.num_evals = 0
@@ -85,7 +84,7 @@ def train(cfg: DictConfig):
 
     cfg_full = OmegaConf.to_container(cfg, resolve=True)
 
-    if not cfg.general.debug:
+    if not cfg.general.debug and not cfg.general.no_wandb:
         create_wandb_run(
             project=cfg.wandb.project,
             group=cfg.wandb.group,
@@ -119,7 +118,7 @@ def train(cfg: DictConfig):
         **{cfg.alg.checkpoint_keyword_arg: param_dir}
     )
 
-    if not cfg.general.debug:
+    if not cfg.general.debug and not cfg.general.no_wandb:
         wandb.finish()
 
 if __name__=='__main__':

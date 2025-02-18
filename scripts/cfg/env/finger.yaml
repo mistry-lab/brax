@@ -1,1 +1,11 @@
 name: finger
+
+config:
+  num_timesteps: 1
+  num_envs: 2048
+  episode_length: 50
+  normalize_observations: True
+  reward_scaling: 5
+  action_repeat: 1
+  
+  num_evals: 20

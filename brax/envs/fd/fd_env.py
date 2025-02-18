@@ -15,9 +15,9 @@ class FDEnv(Env):
     def set_control(self, dx: mjx.Data, u: jnp.ndarray):
         pass
 
-    def __init__(self, model: mjx.Model, target_fields: Optional[Set[str]] = None, eps: float = 1e-6):
+    def __init__(self, model: mjx.Model, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, upscale=False):
         self.mx = mjx.put_model(model)
-        dx_template = make_upscaled_data(self.mx)
+        dx_template = make_upscaled_data(self.mx) if upscale else mjx.make_data(self.mx)
         fd_cache = build_fd_cache(dx_template, target_fields, eps)
         self.step_fn = make_step_fn(self.mx, self.set_control, fd_cache)
 

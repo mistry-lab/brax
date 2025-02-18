@@ -1,8 +1,10 @@
 from brax.envs.fd import finger
+from brax.envs.fd import linear
 from brax.envs.fd.fd_env import FDEnv
 
 _envs = {
     'finger': finger.Finger,
+    'linear': linear.Linear
 }
 
 def get_environment(env_name: str, **kwargs) -> FDEnv:

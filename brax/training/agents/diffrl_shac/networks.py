@@ -48,15 +48,13 @@ def make_shac_networks(
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=policy_hidden_layer_sizes,
       activation=activation,
-      layer_norm=layer_norm,
-      dtype=jnp.float64)
+      layer_norm=layer_norm)
   value_network = networks.make_value_network(
       observation_size,
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=value_hidden_layer_sizes,
       activation=activation,
-      layer_norm=layer_norm,
-      dtype=jnp.float64)
+      layer_norm=layer_norm)
 
   return DiffRLSHACNetworks(
       policy_network=policy_network,

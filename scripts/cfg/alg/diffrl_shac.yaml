@@ -1,0 +1,37 @@
+name: diffrl_shac
+network_config_filename: diffrl_shac_network_config.json
+module_path: brax.training.agents.diffrl_shac.train
+checkpoint_path: brax.training.agents.diffrl_shac.checkpoint
+checkpoint_keyword_arg: save_checkpoint_path
+
+params:
+  # schedule parameters
+  num_timesteps: ${env.config.num_timesteps}
+  unroll_length: ${env.config.unroll_length}
+  batch_size: ${env.config.batch_size}
+  num_minibatches: ${env.config.num_minibatches}
+  num_updates_per_batch: ${env.config.num_updates_per_batch}
+
+  # environment wrapper
+  num_envs: ${env.config.num_envs}
+  episode_length: ${env.config.episode_length}
+  action_repeat: ${env.config.action_repeat}
+
+  # network parameters
+  policy_hidden_layer_sizes: ${env.config.policy_hidden_layer_sizes}
+  value_hidden_layer_sizes: ${env.config.value_hidden_layer_sizes}
+  actor_lr: ${env.diffrl_shac.actor_lr}
+  critic_lr: ${env.diffrl_shac.critic_lr}
+  target_critic_alpha: ${env.config.target_critic_alpha}
+  betas: ${env.config.betas}
+
+  # SHAC params
+  discounting: ${env.config.discounting}
+  normalize_observations: ${env.config.normalize_observations}
+  reward_scaling: ${env.config.reward_scaling}
+  max_replay_size: ${env.config.max_replay_size}
+
+  # eval
+  num_evals: ${env.config.num_evals}
+  num_eval_envs: ${env.config.num_eval_envs}
+  deterministic_eval:  ${env.config.deterministic_eval}

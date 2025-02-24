@@ -1,37 +1,28 @@
 from brax.envs.fd.fd_env import FDEnv
 
-import mujoco
 from mujoco import mjx
 
 from etils import epath
 
 import jax
 import jax.numpy as jnp
+
+from brax.io import mjcf
 from brax.fd.upscale import make_upscaled_data
 from brax.envs.base import State
 
-from typing import Mapping, Tuple, Union
-
-ObservationSize = Union[int, Mapping[str, Union[Tuple[int, ...], int]]]
-
 class Finger(FDEnv):
-    def __init__(self, eps: float = 1e-6):
+    def __init__(self, **kwargs):
         path = epath.resource_path('brax') / 'envs/assets/fd/finger_mjx.xml'
-        self.model = mujoco.MjModel.from_xml_path(str(path))
-        super().__init__(self.model, {"qpos", "qvel", "ctrl"}, eps)
-
-    @property
-    def observation_size(self) -> ObservationSize:
-        rng = jax.random.PRNGKey(0)
-        reset_state = self.unwrapped.reset(rng)
-        obs = reset_state.obs
-        if isinstance(obs, jax.Array):
-            return obs.shape[-1]
-        return jax.tree_util.tree_map(lambda x: x.shape, obs)
+        sys = mjcf.load(path)
+        super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
     @property
     def action_size(self) -> int:
-        return self.model.nu
+        return self.sys.nu
+
+    def set_control(self, dx, u):
+        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
     def _angle_axis_to_quaternion(self, angle_axis):
         """
@@ -71,26 +62,22 @@ class Finger(FDEnv):
         return quaternion
 
     def reset(self, rng: jax.Array, upscale=False) -> State:
-        qpos_init = self.generate_initial_conditions(rng)
+        qpos_init = self._generate_initial_conditions(rng)
         qvel_init = jnp.zeros_like(qpos_init)  # or any distribution you like
 
-        dx0 = make_upscaled_data(self.mx) if upscale else mjx.make_data(self.mx)
-        dx0 = dx0.replace(qpos=dx0.qpos.at[:].set(qpos_init))
-        dx0 = dx0.replace(qvel=dx0.qvel.at[:].set(qvel_init))
-
-        obs = self._get_observation(dx0)
+        pipeline_state = self.pipeline_init(qpos_init, qvel_init)
+        obs = self._get_observation(pipeline_state)
 
         reward, done, zero = jnp.zeros(3)
         metrics = {}
 
-        return State(dx0, obs, reward, done, metrics)
+        return State(pipeline_state, obs, reward, done, metrics)
 
     def step(self, state: State, u: jnp.ndarray) -> State:
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
-        #reward = jnp.where(state.info["truncation"], -self.terminal_cost(dx_next), -self.running_cost(dx_next))
-        reward = -self.running_cost(dx_next)
+        reward = -self._running_cost(dx_next)
 
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward
@@ -99,7 +86,7 @@ class Finger(FDEnv):
     def _get_observation(self, dx: mjx.Data):
         return jnp.concatenate([dx.qpos, dx.qvel])
 
-    def generate_initial_conditions(self, rng: jax.Array) -> State:
+    def _generate_initial_conditions(self, rng: jax.Array) -> State:
         # Solution of IK
         _, key = jax.random.split(rng)
         sign = 2.*jax.random.bernoulli(key, 0.5) - 1.
@@ -129,19 +116,8 @@ class Finger(FDEnv):
 
         return jnp.concatenate([q0,q1,theta])
 
-    def running_cost(self, dx):
+    def _running_cost(self, dx):
         pos_finger = dx.qpos[2]
         u = dx.ctrl
 
         return  0.002 * jnp.sum(u ** 2) + 0.001 * pos_finger ** 2
-
-    def terminal_cost(self, dx):
-        pos_finger = dx.qpos[2]
-
-        touch = dx.sensordata[0]
-        p_finger = dx.sensordata[1:4]
-        p_target = dx.sensordata[4:7]
-        return  10. * jnp.sum((p_finger - p_target)**2) + 4.* touch * pos_finger**2
-
-    def set_control(self, dx, u):
-        return dx.replace(ctrl=dx.ctrl.at[:].set(u))

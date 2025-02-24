@@ -6,17 +6,22 @@ checkpoint_keyword_arg: save_checkpoint_path
 
 params:
   num_timesteps: ${env.config.num_timesteps}
-  num_evals: ${env.config.num_evals}
-  reward_scaling: ${env.config.reward_scaling}
+
+  num_envs: ${env.config.num_envs}
   episode_length: ${env.config.episode_length}
-  normalize_observations: ${env.config.normalize_observations}
   action_repeat: ${env.config.action_repeat}
 
-  unroll_length: 30
-  num_minibatches: 16
-  num_updates_per_batch: 8
-  discounting: 0.95
-  learning_rate: 3e-4
+  learning_rate: ${env.ppo.learning_rate}
   entropy_cost: 1e-2
-  batch_size: 512
-  num_envs: 2048
+  discounting: ${env.config.discounting} 
+  unroll_length: ${env.config.unroll_length}
+  batch_size: ${env.config.batch_size}
+  num_minibatches: ${env.config.num_minibatches}
+  num_updates_per_batch: ${env.config.num_updates_per_batch}
+
+  normalize_observations: ${env.config.normalize_observations}
+  reward_scaling: ${env.config.reward_scaling}
+
+  num_evals: ${env.config.num_evals}
+  num_eval_envs: ${env.config.num_eval_envs}
+  deterministic_eval: ${env.config.deterministic_eval}

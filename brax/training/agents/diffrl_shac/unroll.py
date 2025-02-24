@@ -19,9 +19,9 @@ def generate_batched_unroll(
         env_state: envs.State,
         policy: types.Policy,
         key: PRNGKey,
-        reward_scaling: float,
         unroll_length: int,
         number: int,
+        reward_scaling: float,
         extra_fields: Tuple[str] = ()
     ):
 
@@ -34,6 +34,15 @@ def generate_batched_unroll(
             key=key,
             unroll_length=unroll_length,
             extra_fields=extra_fields
+        )
+
+        data = types.Transition(
+            observation=data.observation,
+            action=data.action,
+            reward=reward_scaling * data.reward,
+            discount=data.discount,
+            next_observation=data.next_observation,
+            extras=data.extras
         )
 
         return next_state, data

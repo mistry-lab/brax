@@ -1,5 +1,4 @@
-name: finger
-terminal_reward_name: finger
+name: inverted_pendulum
 
 config:
   # schedule parameters
@@ -33,3 +32,7 @@ config:
 
 ppo:
   learning_rate: 3e-4
+
+diffrl_shac:
+  actor_lr: 1e-3
+  critic_lr: 1e-2

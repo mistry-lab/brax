@@ -134,6 +134,7 @@ def make_losses(
     gae_lambda: float,
     unroll_length: int,
     batch_size: int,
+    num_minibatches: int,
     num_envs: int
 ):
     value_apply = shac_network.value_network.apply
@@ -185,9 +186,9 @@ def make_losses(
             env_state=jax.lax.stop_gradient(env_state),
             policy=policy,
             key=key,
-            reward_scaling=reward_scaling,
             unroll_length=unroll_length,
-            number=batch_size // num_envs,
+            number=batch_size * num_minibatches // num_envs,
+            reward_scaling=reward_scaling,
             extra_fields=('truncation', 'episode_metrics', 'episode_done'),
         )
         # Put the time dimension first.

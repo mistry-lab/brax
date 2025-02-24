@@ -1,13 +1,15 @@
 import jax
 import jax.numpy as jnp
 from mujoco import mjx
-from jax import config
+
 from typing import Callable, Optional, Set
 from jax.flatten_util import ravel_pytree
 import numpy as np
 from jax._src.util import unzip2
 
 from brax.fd.fd_cache import FDCache
+import brax.mjx.pipeline as mjx_pipeline
+from brax.base import System
 
 def build_fd_cache(
     dx_ref: mjx.Data,
@@ -68,7 +70,7 @@ def build_fd_cache(
     )
 
 def make_step_fn(
-    mx,
+    sys: System,
     set_control_fn: Callable,
     fd_cache: FDCache
 ):
@@ -85,7 +87,7 @@ def make_step_fn(
           2) Steps the simulation forward one step with MuJoCo.
         """
         dx_with_ctrl = set_control_fn(dx, u)
-        dx_next = mjx.step(mx, dx_with_ctrl)
+        dx_next = mjx_pipeline.step(sys, dx_with_ctrl, u)
 
         return dx_next
 

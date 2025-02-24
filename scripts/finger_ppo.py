@@ -3,16 +3,20 @@ import importlib
 import functools
 import hydra
 import pathlib
+import logging
 from hydra.core.hydra_config import HydraConfig
 from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
-from typing import List
+from typing import List, Callable
 
 import wandb
 from tensorboardX import SummaryWriter
 
 from jax import config
+from brax.envs import Env 
+from brax.envs.wrappers.training import DomainRandomizationVmapWrapper, AutoResetWrapper, VmapWrapper
 from brax.envs.fd import get_environment
+from brax.envs.fd.wrappers import get_terminal_reward_wrapper
 
 config.update('jax_default_matmul_precision', 'high')
 config.update("jax_enable_x64", True)
@@ -67,6 +71,31 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 
     writer.flush()
 
+def wrap_env_fn(
+    env: Env,
+    episode_length: int,
+    action_repeat: int,
+    randomization_fn: Callable,
+    terminal_reward_name: str, 
+):
+    logging.info(f"Wrapping with terminal reward function: {terminal_reward_name}")
+    
+    if randomization_fn is None:
+        env = VmapWrapper(env)
+    else:
+        env = DomainRandomizationVmapWrapper(env, randomization_fn)
+
+    env = get_terminal_reward_wrapper(
+        env=env,
+        terminal_reward_name=terminal_reward_name,
+        episode_length=episode_length,
+        action_repeat=action_repeat,
+        vmap=True
+    )
+    env = AutoResetWrapper(env)
+
+    return env
+
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
@@ -113,6 +142,8 @@ def train(cfg: DictConfig):
     make_inference_fn, params, _ = algorithm_train(
         **cfg.alg.params,
         environment=env,
+        wrap_env_fn=functools.partial(wrap_env_fn, terminal_reward_name=cfg.env.terminal_reward_name) \
+            if "terminal_reward_name" in cfg.env else None,
         progress_fn=functools.partial(progress, times, writer),
         seed=cfg.general.seed,
         **{cfg.alg.checkpoint_keyword_arg: param_dir}

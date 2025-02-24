@@ -1,0 +1,22 @@
+name: ant
+terminal_reward_name: ant
+
+config:
+  num_timesteps: 1
+  num_envs: 2048
+  episode_length: 50
+  normalize_observations: True
+  reward_scaling: 5
+  action_repeat: 1
+  unroll_length: 32
+  num_minibatches: 16
+  num_updates_per_batch: 8
+  discounting: 0.97
+  num_envs: 2048
+  batch_size: 64
+
+  actor_lr:
+  critic_lr: 
+  target_critic_alpha: 0.2
+
+  num_evals: 20

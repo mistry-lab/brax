@@ -23,7 +23,7 @@ from brax.training.agents.diffrl_shac.value_training_sample import ValueTraining
 from absl import logging
 
 import functools
-from typing import Callable, Any, Union, Dict
+from typing import Callable, Any, Union, Dict, Sequence
 
 import numpy as np
 import jax.numpy as jnp
@@ -176,8 +176,8 @@ def train(
     max_devices_per_host: Optional[int] = None,
     unroll_length: int = 10,  # horizon for short rollouts
     batch_size: int = 32,
-    critic_iterations: int = 16,
-    grad_updates_per_step: int = 4,
+    num_minibatches: int = 4,
+    num_updates_per_batch: int = 2,
     # environment wrapper
     num_envs: int = 1,
     episode_length: Optional[int] = None,
@@ -190,6 +190,8 @@ def train(
     # network parameters
     network_factory: types.NetworkFactory[
               shac_networks.DiffRLSHACNetworks] = shac_networks.make_shac_networks,
+    policy_hidden_layer_sizes: Sequence[int] = (32,) * 4,
+    value_hidden_layer_sizes: Sequence[int] = (256,) * 5,
     actor_grad_norm: Optional[float] = None,  # clip actor and ciritc grad norms
     critic_grad_norm: Optional[float] = None,
     lr_schedule: str = "linear",
@@ -204,7 +206,6 @@ def train(
     gae_lambda: float = 0.95,
     min_replay_size: int = 0,
     max_replay_size: Optional[int] = None,
-    critic_method: str = "one-step",
     target_critic_alpha: float = 0.4,
     seed: int = 0,
     # eval
@@ -231,9 +232,7 @@ def train(
     assert lr_schedule in ["linear", "constant"]
     assert 0 < discounting <= 1
     assert reward_scaling > 0.0
-    assert critic_iterations > 0
-    assert grad_updates_per_step > 0
-    assert critic_method in ["one-step", "td-lambda"]
+    assert num_minibatches > 0
     assert 0 < target_critic_alpha <= 1.0
 
     if min_replay_size >= num_timesteps:
@@ -267,7 +266,7 @@ def train(
 
     # The number of environment steps executed for every training step.
     env_step_per_training_step = (
-        unroll_length * action_repeat * batch_size
+        unroll_length * action_repeat * batch_size * num_minibatches
     )
     num_evals_after_init = max(num_evals - 1, 1)
     # The number of training_step calls per training_epoch call.
@@ -307,6 +306,8 @@ def train(
     shac_network = network_factory(
         environment.observation_size,
         environment.action_size,
+        policy_hidden_layer_sizes=policy_hidden_layer_sizes,
+        value_hidden_layer_sizes=value_hidden_layer_sizes,
         preprocess_observations_fn=normalize)
     make_policy = shac_networks.make_inference_fn(shac_network)
 
@@ -331,7 +332,7 @@ def train(
             unroll_length=unroll_length,
             max_replay_size=max_replay_size,
             device_count=device_count,
-            sample_size=batch_size * grad_updates_per_step
+            sample_size=batch_size * num_minibatches
     )
 
     critic_loss, actor_loss = shac_losses.make_losses(
@@ -341,6 +342,7 @@ def train(
         gae_lambda=gae_lambda,
         unroll_length=unroll_length,
         batch_size=batch_size,
+        num_minibatches=num_minibatches,
         num_envs=num_envs
     )
 
@@ -363,16 +365,15 @@ def train(
         network_factory=network_factory,
     )
 
-    def critic_sgd_step(
+    def minibatch_step(
         network_state: NetworkTrainingState,
-        transitions: Transition,
+        data: Transition,
         normalizer_params: running_statistics.RunningStatisticsState,
-    ) -> Tuple[TrainingState, Metrics]:
-
+    ):
         critic_loss, value_params, value_optimizer_state = critic_update(
             network_state.params,
             normalizer_params,
-            transitions,
+            data,
             optimizer_state=network_state.optimizer_state,
         )
 
@@ -387,6 +388,28 @@ def train(
         )
         return new_network_state, metrics
 
+    def critic_sgd_step(
+        carry: Tuple[NetworkTrainingState, PRNGKey],
+        data: Transition,
+        normalizer_params: running_statistics.RunningStatisticsState,
+    ) -> Tuple[TrainingState, Metrics]:
+        network_state, key = carry
+        key, key_perm, key_grad = jax.random.split(key, 3)
+
+        def convert_data(x: jnp.ndarray):
+            x = jax.random.permutation(key_perm, x)
+            x = jnp.reshape(x, (num_minibatches, -1) + x.shape[1:])
+            return x
+
+        shuffled_data = jax.tree_util.tree_map(convert_data, data)
+        (network_state, _), metrics = jax.lax.scan(
+            functools.partial(minibatch_step, normalizer_params=normalizer_params),
+            (network_state, key_grad),
+            shuffled_data,
+            length=num_minibatches,
+        )
+        return (network_state, key), metrics
+
     def training_step(
         training_state: TrainingState,
         env_state: envs.State,
@@ -398,12 +421,14 @@ def train(
         ReplayBufferState,
         Metrics,
     ]:
+        key_actor, key_critic = key.split() 
+
         # train actor
         (_, extras), policy_params, policy_optimizer_state = actor_update(
             training_state.policy_training_state.params,
             training_state.target_value_params,
             training_state.normalizer_params,
-            key,
+            key_actor,
             env,
             env_state,
             optimizer_state=training_state.policy_training_state.optimizer_state)
@@ -444,16 +469,14 @@ def train(
             env_steps=training_state.env_steps + env_step_per_training_step,
         )
 
-        buffer_state, transitions = replay_buffer.sample(buffer_state)
-        # Change the front dimension of transitions so 'update_step' is called
-        # grad_updates_per_step times by the scan.
-        transitions = jax.tree_util.tree_map(
-            lambda x: jnp.reshape(x, (grad_updates_per_step, -1) + x.shape[1:]),
-            transitions,
-        )
+        buffer_state, data = replay_buffer.sample(buffer_state)
         value_network_state, metrics = jax.lax.scan(
-            functools.partial(critic_sgd_step, normalizer_params=normalizer_params),
-            training_state.value_training_state, transitions
+            functools.partial(
+                critic_sgd_step, data=data, normalizer_params=normalizer_params
+            ),
+            (training_state.value_training_state, key_critic),
+            (),
+            length=num_updates_per_batch,
         )
 
         target_value_params = jax.tree_util.tree_map(

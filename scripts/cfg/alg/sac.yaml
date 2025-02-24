@@ -1,0 +1,18 @@
+name: sac
+network_config_filename: sac_network_config.json
+module_path: brax.training.agents.sac.train
+checkpoint_path: brax.training.agents.sac.checkpoint
+checkpoint_keyword_arg: checkpoint_logdir
+
+params:
+  num_timesteps: ${env.config.num_timesteps}
+  num_evals: ${env.config.num_evals}
+  reward_scaling: ${env.config.reward_scaling}
+  episode_length: ${env.config.episode_length}
+  normalize_observations: ${env.config.normalize_observations}
+  action_repeat: ${env.config.action_repeat}
+
+  discounting: 0.95
+  learning_rate: 3e-4
+  batch_size: 512
+  max_replay_size: 1_000_000

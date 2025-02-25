@@ -68,28 +68,6 @@ def _strip_weak_type(tree):
 
     return jax.tree_util.tree_map(f, tree)
 
-def _init_replay_buffer(
-        observation_size: int,
-        unroll_length: int,
-        max_replay_size: int,
-        device_count: int,
-        sample_size: int):
-
-    dummy_obs = jnp.zeros((unroll_length, observation_size))
-    dummy_sample = ValueTrainingSample(  # pytype: disable=wrong-arg-types  # jax-ndarray
-        observation=dummy_obs,
-        reward=jnp.zeros((unroll_length,)),
-        discount=jnp.zeros((unroll_length,)),
-        next_observation=dummy_obs,
-        truncation=jnp.zeros((unroll_length,))
-    )
-
-    return replay_buffers.UniformSamplingQueue(
-        max_replay_size=max_replay_size // device_count,
-        dummy_data_sample=dummy_sample,
-        sample_batch_size=sample_size // device_count,
-    )
-
 def _init_training_state(
     key: PRNGKey,
     obs_size: int,
@@ -190,8 +168,6 @@ def train(
     # network parameters
     network_factory: types.NetworkFactory[
               shac_networks.DiffRLSHACNetworks] = shac_networks.make_shac_networks,
-    policy_hidden_layer_sizes: Sequence[int] = (32,) * 4,
-    value_hidden_layer_sizes: Sequence[int] = (256,) * 5,
     actor_grad_norm: Optional[float] = None,  # clip actor and ciritc grad norms
     critic_grad_norm: Optional[float] = None,
     lr_schedule: str = "linear",
@@ -204,9 +180,6 @@ def train(
     normalize_observations: bool = False,
     reward_scaling: float = 1.,
     gae_lambda: float = 0.95,
-    min_replay_size: int = 0,
-    max_replay_size: Optional[int] = None,
-    target_critic_alpha: float = 0.4,
     seed: int = 0,
     # eval
     num_evals: int = 1,
@@ -223,7 +196,7 @@ def train(
     restore_checkpoint_path: Optional[str] = None
 ):
     # sanity check parameters
-    assert batch_size % num_envs == 0
+    assert batch_size * num_minibatches  % num_envs == 0
 
     assert unroll_length > 0
     assert num_timesteps >= 0
@@ -233,17 +206,9 @@ def train(
     assert 0 < discounting <= 1
     assert reward_scaling > 0.0
     assert num_minibatches > 0
-    assert 0 < target_critic_alpha <= 1.0
-
-    if min_replay_size >= num_timesteps:
-        raise ValueError(
-            'No training will happen because min_replay_size >= num_timesteps'
-        )
+    assert 0 < tau <= 1.0
 
     xt = time.time()
-    
-    if max_replay_size is None:
-        max_replay_size = num_timesteps
 
     process_count = jax.process_count()
     process_id = jax.process_index()
@@ -306,8 +271,6 @@ def train(
     shac_network = network_factory(
         environment.observation_size,
         environment.action_size,
-        policy_hidden_layer_sizes=policy_hidden_layer_sizes,
-        value_hidden_layer_sizes=value_hidden_layer_sizes,
         preprocess_observations_fn=normalize)
     make_policy = shac_networks.make_inference_fn(shac_network)
 
@@ -325,15 +288,6 @@ def train(
             optax.clip_by_global_norm(critic_grad_norm),
             optax.adam(learning_rate=critic_lr, b1=betas[0], b2=betas[1]),
         )
-
-    replay_buffer = \
-        _init_replay_buffer(
-            observation_size=environment.observation_size,
-            unroll_length=unroll_length,
-            max_replay_size=max_replay_size,
-            device_count=device_count,
-            sample_size=batch_size * num_minibatches
-    )
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
@@ -390,21 +344,30 @@ def train(
 
     def critic_sgd_step(
         carry: Tuple[NetworkTrainingState, PRNGKey],
+        unused_t,
         data: Transition,
         normalizer_params: running_statistics.RunningStatisticsState,
     ) -> Tuple[TrainingState, Metrics]:
         network_state, key = carry
-        key, key_perm, key_grad = jax.random.split(key, 3)
+        key, key_shuffle = jax.random.split(key)
 
         def convert_data(x: jnp.ndarray):
-            x = jax.random.permutation(key_perm, x)
+            x = jax.random.permutation(key_shuffle, x)
             x = jnp.reshape(x, (num_minibatches, -1) + x.shape[1:])
             return x
 
+        data = ValueTrainingSample(
+            observation=data.observation,
+            reward=data.reward,
+            discount=data.discount,
+            next_observation=data.next_observation,
+            truncation=data.extras['state_extras']['truncation']
+        )
+
         shuffled_data = jax.tree_util.tree_map(convert_data, data)
-        (network_state, _), metrics = jax.lax.scan(
+        network_state, metrics = jax.lax.scan(
             functools.partial(minibatch_step, normalizer_params=normalizer_params),
-            (network_state, key_grad),
+            network_state,
             shuffled_data,
             length=num_minibatches,
         )
@@ -413,15 +376,13 @@ def train(
     def training_step(
         training_state: TrainingState,
         env_state: envs.State,
-        buffer_state: ReplayBufferState,
         key: PRNGKey,
     ) -> Tuple[
         TrainingState,
         Union[envs.State, envs_v1.State],
-        ReplayBufferState,
         Metrics,
     ]:
-        key_actor, key_critic = key.split() 
+        key_actor, key_critic = jax.random.split(key)
 
         # train actor
         (_, extras), policy_params, policy_optimizer_state = actor_update(
@@ -450,15 +411,6 @@ def train(
             pmap_axis_name=_PMAP_AXIS_NAME,
         )
 
-        samples = ValueTrainingSample(
-            observation=data.observation,
-            reward=data.reward,
-            discount=data.discount,
-            next_observation=data.next_observation,
-            truncation=data.extras['state_extras']['truncation']
-        )
-        buffer_state = replay_buffer.insert(buffer_state, samples)
-
         training_state = training_state.replace(
             policy_training_state=training_state.policy_training_state.replace(
                 params=policy_params,
@@ -469,8 +421,7 @@ def train(
             env_steps=training_state.env_steps + env_step_per_training_step,
         )
 
-        buffer_state, data = replay_buffer.sample(buffer_state)
-        value_network_state, metrics = jax.lax.scan(
+        (value_network_state, _), metrics = jax.lax.scan(
             functools.partial(
                 critic_sgd_step, data=data, normalizer_params=normalizer_params
             ),
@@ -490,44 +441,41 @@ def train(
             target_value_params=target_value_params
         )
 
-        metrics['buffer_current_size'] = replay_buffer.size(buffer_state)
-        return training_state, nstate, buffer_state, {} # metrics
+        return training_state, nstate, {} # metrics
 
     def training_epoch(
         training_state: TrainingState,
         env_state: envs.State,
-        buffer_state: ReplayBufferState,
         key: PRNGKey,
     ) -> Tuple[TrainingState, envs.State, ReplayBufferState, Metrics]:
 
         def f(carry, unused_t):
-            ts, es, bs, k = carry
+            ts, es, k = carry
             k, new_key = jax.random.split(k)
-            ts, es, bs, metrics = training_step(ts, es, bs, k)
-            return (ts, es, bs, new_key), metrics
+            ts, es, metrics = training_step(ts, es, k)
+            return (ts, es, new_key), metrics
 
-        (training_state, env_state, buffer_state, key), metrics = jax.lax.scan(
+        (training_state, env_state, key), metrics = jax.lax.scan(
             f,
-            (training_state, env_state, buffer_state, key),
+            (training_state, env_state, key),
             (),
             length=num_training_steps_per_epoch,
         )
         metrics = jax.tree_util.tree_map(jnp.mean, metrics)
-        return training_state, env_state, buffer_state, metrics
+        return training_state, env_state, metrics
 
     training_epoch = jax.pmap(training_epoch, axis_name=_PMAP_AXIS_NAME)
 
     def training_epoch_with_timing(
         training_state: TrainingState,
         env_state: envs.State,
-        buffer_state: ReplayBufferState,
         key: PRNGKey,
     ) -> Tuple[TrainingState, envs.State, ReplayBufferState, Metrics]:
         nonlocal training_walltime
         t = time.time()
         # training_state, env_state = _strip_weak_type((training_state, env_state))
-        (training_state, env_state, buffer_state, metrics) = training_epoch(
-            training_state, env_state, buffer_state, key
+        (training_state, env_state, metrics) = training_epoch(
+            training_state, env_state, key
         )
         # training_state, env_state, metrics = \
         #     _strip_weak_type((training_state, env_state, metrics))
@@ -545,7 +493,7 @@ def train(
             'training/walltime': training_walltime,
             **{f'training/{name}': value for name, value in metrics.items()},
         }
-        return training_state, env_state, buffer_state, metrics  # pytype: disable=bad-return-type  # py311-upgrade
+        return training_state, env_state, metrics  # pytype: disable=bad-return-type  # py311-upgrade
 
     rng = jax.random.PRNGKey(seed)
     global_key, local_key = jax.random.split(rng)
@@ -570,11 +518,6 @@ def train(
     )
     env_state = jax.pmap(env.reset)(env_keys)
 
-    # Replay buffer init
-    buffer_state = jax.pmap(replay_buffer.init)(
-        jax.random.split(rb_key, local_devices_to_use)
-    )
-
     eval_env = _maybe_wrap_env(
         eval_env or environment,
         wrap_env,
@@ -591,7 +534,7 @@ def train(
         eval_env,
         functools.partial(make_policy, deterministic=deterministic_eval),
         num_eval_envs=num_eval_envs,
-        episode_length=unroll_length,
+        episode_length=episode_length,
         action_repeat=action_repeat,
         key=eval_key)
 
@@ -617,9 +560,9 @@ def train(
         # Optimization
         epoch_key, local_key = jax.random.split(local_key)
         epoch_keys = jax.random.split(epoch_key, local_devices_to_use)
-        (training_state, env_state, buffer_state, training_metrics) = (
+        (training_state, env_state, training_metrics) = (
             training_epoch_with_timing(
-                training_state, env_state, buffer_state, epoch_keys
+                training_state, env_state, epoch_keys
             )
         )
 

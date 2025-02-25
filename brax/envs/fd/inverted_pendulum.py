@@ -15,7 +15,8 @@
 # pylint:disable=g-multiple-import
 """An inverted pendulum environment."""
 
-from brax import base
+from mujoco import mjx
+
 from brax.io import mjcf
 from brax.envs.fd.fd_env import FDEnv
 from brax.envs.base import State
@@ -64,16 +65,12 @@ class InvertedPendulum(FDEnv):
 
         dx_next = self.step_fn(state.pipeline_state, action)
         obs = self._get_observation(dx_next)
-        reward = -self._running_cost(dx_next)
+        reward = 1.0
         done = jnp.where(jnp.abs(obs[1]) > 0.2, 1.0, 0.0)
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward, done=done
         )
 
-    def _get_observation(self, pipeline_state: base.State) -> jax.Array:
+    def _get_observation(self, pipeline_state: mjx.Data) -> jax.Array:
         """Observe cartpole body position and velocities."""
-        return jnp.concatenate([pipeline_state.q, pipeline_state.qd])
-
-    def _running_cost(self, dx):
-        u = dx.ctrl
-        return 1e-3 * jnp.sum(u ** 2)
+        return jnp.concatenate([pipeline_state.qpos, pipeline_state.qvel])

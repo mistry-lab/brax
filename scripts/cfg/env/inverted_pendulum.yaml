@@ -2,11 +2,7 @@ name: inverted_pendulum
 
 config:
   # schedule parameters
-  num_timesteps: 2_000_000
-  unroll_length: 5
-  batch_size: 1024
-  num_minibatches: 32
-  num_updates_per_batch: 4
+  num_timesteps: 50_000_000
 
   # environment wrapper
   num_envs: 2048
@@ -14,16 +10,17 @@ config:
   action_repeat: 1
 
   # network parameters
+  actor_grad_norm: 1.0
+  critic_grad_norm: 1.0
   policy_hidden_layer_sizes: [64, 64]
   value_hidden_layer_sizes: [64, 64]
-  target_critic_alpha: 0.2
+  tau: 0.2
   betas: [0.7, 0.95]
 
   # SHAC params
   discounting: 0.97
   normalize_observations: True
   reward_scaling: 10
-  max_replay_size: 20_000
 
   # eval
   num_evals: 20
@@ -31,8 +28,25 @@ config:
   deterministic_eval: True
 
 ppo:
+  unroll_length: 5
+  batch_size: 1024
+  num_minibatches: 32
+  num_updates_per_batch: 4
+  num_envs: 2048
+
   learning_rate: 3e-4
 
 diffrl_shac:
-  actor_lr: 1e-3
-  critic_lr: 1e-2
+  unroll_length: 5
+  batch_size: 1024
+  num_minibatches: 32
+  num_updates_per_batch: 4
+  num_envs: 2048
+  # unroll_length: 32
+  # batch_size: 16
+  # num_minibatches: 4
+  # num_updates_per_batch: 16
+  # num_envs: 64
+
+  actor_lr: 3e-4
+  critic_lr: 1e-3

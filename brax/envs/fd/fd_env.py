@@ -11,9 +11,7 @@ import jax.numpy as jnp
 from brax import base
 from brax.fd.pipeline import build_fd_cache, make_step_fn
 from brax.fd.upscale import make_upscaled_data
-from brax.envs.base import State
-
-import brax.mjx.pipeline as mjx_pipeline
+from brax.base import System
 
 from typing import Mapping, Tuple, Union
 
@@ -24,12 +22,14 @@ class FDEnv(Env):
     def set_control(self, dx: mjx.Data, u: jnp.ndarray):
         pass
 
-    def __init__(self, sys: State, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, upscale=False):
-        self.sys = sys        
+    def __init__(self, sys: System, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, upscale=False):
+        self.sys = sys
+        self.mx = mjx.put_model(self.sys.mj_model)
+        self.dx = mjx.make_data(self.mx)
 
-        dx_template = make_upscaled_data(self.sys) if upscale else mjx.make_data(self.sys)
-        fd_cache = build_fd_cache(dx_template, target_fields, eps)
-        self.step_fn = make_step_fn(self.sys, self.set_control, fd_cache)
+        # dx_template = make_upscaled_data(self.mx)
+        fd_cache = build_fd_cache(self.dx, target_fields, eps)
+        self.step_fn = make_step_fn(self.mx, self.set_control, fd_cache)
 
     @property
     def backend(self):
@@ -44,12 +44,9 @@ class FDEnv(Env):
             return obs.shape[-1]
         return jax.tree_util.tree_map(lambda x: x.shape, obs)
 
-    def pipeline_init(
-        self,
-        q: jax.Array,
-        qd: jax.Array,
-        act: Optional[jax.Array] = None,
-        ctrl: Optional[jax.Array] = None,
-    ) -> base.State:
-        """Initializes the pipeline state."""
-        return mjx_pipeline.init(self.sys, q, qd, act, ctrl)
+    def pipeline_init(self, qpos_init: jax.Array, qvel_init: jax.Array) -> mjx.Data:
+        dx0 = mjx.make_data(self.mx)
+        dx0 = dx0.replace(qpos=dx0.qpos.at[:].set(qpos_init))
+        dx0 = dx0.replace(qvel=dx0.qvel.at[:].set(qvel_init))
+
+        return dx0

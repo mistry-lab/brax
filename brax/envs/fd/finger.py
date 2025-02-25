@@ -8,7 +8,6 @@ import jax
 import jax.numpy as jnp
 
 from brax.io import mjcf
-from brax.fd.upscale import make_upscaled_data
 from brax.envs.base import State
 
 class Finger(FDEnv):
@@ -65,13 +64,13 @@ class Finger(FDEnv):
         qpos_init = self._generate_initial_conditions(rng)
         qvel_init = jnp.zeros_like(qpos_init)  # or any distribution you like
 
-        pipeline_state = self.pipeline_init(qpos_init, qvel_init)
-        obs = self._get_observation(pipeline_state)
+        dx0 = self.pipeline_init(qpos_init, qvel_init)
+        obs = self._get_observation(dx0)
 
         reward, done, zero = jnp.zeros(3)
         metrics = {}
 
-        return State(pipeline_state, obs, reward, done, metrics)
+        return State(dx0, obs, reward, done, metrics)
 
     def step(self, state: State, u: jnp.ndarray) -> State:
         dx_next = self.step_fn(state.pipeline_state, u)

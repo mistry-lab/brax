@@ -4,6 +4,7 @@ import functools
 import hydra
 import pathlib
 import logging
+import argparse
 from hydra.core.hydra_config import HydraConfig
 from datetime import datetime
 from omegaconf import DictConfig, OmegaConf
@@ -13,9 +14,9 @@ import wandb
 from tensorboardX import SummaryWriter
 
 from jax import config
-from brax.envs import Env 
+from brax.envs import Env, get_environment
 from brax.envs.wrappers.training import DomainRandomizationVmapWrapper, AutoResetWrapper, VmapWrapper
-from brax.envs.fd import get_environment
+from brax.envs.fd import get_environment as get_fd_environment
 from brax.envs.fd.wrappers import get_terminal_reward_wrapper
 
 config.update('jax_default_matmul_precision', 'high')
@@ -96,6 +97,13 @@ def wrap_env_fn(
 
     return env
 
+def get_command_line_args():
+    parser = argparse.ArgumentParser(description='Script to train brax models.')    
+    parser.add_argument('-r', '--regular', action='store_true', help='Use regular instead of FD environment.')
+
+    args = parser.parse_args()
+    return args
+
 @hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
@@ -138,7 +146,21 @@ def train(cfg: DictConfig):
     param_dir = os.path.join(hydra_logdir, cfg.general.param_dir)
     os.makedirs(param_dir)
 
-    env = get_environment(cfg.env.name)
+    kwrd_args = {cfg.alg.checkpoint_keyword_arg: param_dir}
+    if "network_factory_path" in cfg.alg:
+        network_factory_path = importlib.import_module(cfg.alg.network_factory_path)
+        network_factory = getattr(network_factory_path, cfg.alg.make_network_fn_name)
+        network_factory = functools.partial(
+            network_factory,
+            policy_hidden_layer_sizes= \
+                OmegaConf.to_object(cfg.alg.network_factory_params.policy_hidden_layer_sizes),
+            value_hidden_layer_sizes= \
+                OmegaConf.to_object(cfg.alg.network_factory_params.value_hidden_layer_sizes)
+        )
+        kwrd_args["network_factory"] = network_factory
+
+    args = get_command_line_args()
+    env = get_environment(cfg.env.name) if args.regular else get_fd_environment(cfg.env.name)
     make_inference_fn, params, _ = algorithm_train(
         **cfg.alg.params,
         environment=env,
@@ -146,7 +168,7 @@ def train(cfg: DictConfig):
             if "terminal_reward_name" in cfg.env else None,
         progress_fn=functools.partial(progress, times, writer),
         seed=cfg.general.seed,
-        **{cfg.alg.checkpoint_keyword_arg: param_dir}
+        **kwrd_args
     )
 
     if not cfg.general.debug and not cfg.general.no_wandb:

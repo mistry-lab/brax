@@ -1,13 +1,7 @@
 from brax.envs.fd.fd_env import FDEnv
 
-import mujoco
-from mujoco import mjx
-
-from etils import epath
-
 import jax
 import jax.numpy as jnp
-from brax.fd.upscale import make_upscaled_data
 from brax.envs.base import State
 
 from typing import Mapping, Tuple, Union

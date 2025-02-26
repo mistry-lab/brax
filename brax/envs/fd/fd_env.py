@@ -10,12 +10,24 @@ import jax.numpy as jnp
 
 from brax import base
 from brax.fd.pipeline import build_fd_cache, make_step_fn
-from brax.fd.upscale import make_upscaled_data
 from brax.base import System
 
 from typing import Mapping, Tuple, Union
 
 ObservationSize = Union[int, Mapping[str, Union[Tuple[int, ...], int]]]
+
+def upscale(x):
+    if 'dtype' in dir(x):
+        if x.dtype == jnp.int32:
+            return jnp.int64(x)
+        elif x.dtype == jnp.float32:
+            return jnp.float64(x)
+    return x
+
+def make_upscaled_data(mx: mjx.Data):
+    dx_template = mjx.make_data(mx)
+    dx_template = jax.tree.map(upscale, dx_template)
+    return dx_template
 
 class FDEnv(Env):
     @abc.abstractmethod
@@ -34,6 +46,10 @@ class FDEnv(Env):
     @property
     def backend(self):
         return "fd"
+
+    @property
+    def action_size(self) -> int:
+        return self.sys.act_size()
 
     @property
     def observation_size(self) -> ObservationSize:

@@ -16,10 +16,6 @@ class Finger(FDEnv):
         sys = mjcf.load(path)
         super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
-    @property
-    def action_size(self) -> int:
-        return self.sys.nu
-
     def set_control(self, dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
 
@@ -83,11 +79,11 @@ class Finger(FDEnv):
         )
 
     def _get_observation(self, dx: mjx.Data):
-        return jnp.concatenate([dx.qpos, dx.qvel])
+        return jnp.concatenate([dx.qpos, dx.qvel, dx.sensordata])
 
-    def _generate_initial_conditions(self, rng: jax.Array) -> State:
+    def _generate_initial_conditions(self, key: jax.Array) -> State:
         # Solution of IK
-        _, key = jax.random.split(rng)
+        _, key = jax.random.split(key)
         sign = 2.*jax.random.bernoulli(key, 0.5) - 1.
 
         # Reference target position in spinner local frame R_s
@@ -103,7 +99,7 @@ class Finger(FDEnv):
 
         # Inverse kinematic formula
         l1, l2 = 0.17, 0.161
-        q1 = sign * (x**2 + y**2 - l1**2 - l2**2)/(2*l1*l2)
+        q1 = sign * jnp.arccos( (x**2 + y**2 - l1**2 - l2**2)/(2*l1*l2) )
         q0 = jnp.arctan2(y,x) - jnp.arctan2(l2 * jnp.sin(q1), l1 + l2*jnp.cos(q1))
 
         # dx = dx.replace(qpos=dx.qpos.at[0].set(q0[0]))
@@ -115,8 +111,7 @@ class Finger(FDEnv):
 
         return jnp.concatenate([q0,q1,theta])
 
-    def _running_cost(self, dx):
+    def _running_cost(self, dx: mjx.Data):
         pos_finger = dx.qpos[2]
         u = dx.ctrl
-
-        return  0.002 * jnp.sum(u ** 2) + 0.001 * pos_finger ** 2
+        return 0.002 * jnp.sum(u ** 2) + 0.001 * pos_finger ** 2

@@ -30,10 +30,6 @@ class InvertedPendulum(FDEnv):
         path = epath.resource_path('brax') / 'envs/assets/fd/inverted_pendulum.xml'
         sys = mjcf.load(path)
         super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
-
-    @property
-    def action_size(self):
-        return 1
     
     def set_control(self, dx, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))

@@ -133,9 +133,7 @@ def make_losses(
     reward_scaling: float,
     gae_lambda: float,
     unroll_length: int,
-    batch_size: int,
-    num_minibatches: int,
-    num_envs: int
+    number: int
 ):
     value_apply = shac_network.value_network.apply
     make_policy = shac_networks.make_inference_fn(shac_network)
@@ -187,7 +185,7 @@ def make_losses(
             policy=policy,
             key=key,
             unroll_length=unroll_length,
-            number=batch_size * num_minibatches // num_envs,
+            number=number,
             reward_scaling=reward_scaling,
             extra_fields=('truncation', 'episode_metrics', 'episode_done'),
         )

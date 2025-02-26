@@ -7,14 +7,15 @@ from brax.training.types import PRNGKey
 import flax
 from flax import linen
 
+import jax.numpy as jnp
+
 
 @flax.struct.dataclass
-class DiffRLSHACNetworks:
+class UnrollAPGNetworks:
     policy_network: networks.FeedForwardNetwork
-    value_network: networks.FeedForwardNetwork
     parametric_action_distribution: distribution.ParametricDistribution
 
-def make_inference_fn(shac_networks: DiffRLSHACNetworks):
+def make_inference_fn(shac_networks: UnrollAPGNetworks):
   """Creates params and inference function for the SHAC agent."""
 
   def make_policy(
@@ -25,14 +26,7 @@ def make_inference_fn(shac_networks: DiffRLSHACNetworks):
         observations: types.Observation, key_sample: PRNGKey
     ) -> Tuple[types.Action, types.Extra]:
       logits = shac_networks.policy_network.apply(*params, observations)
-      if deterministic:
-        return shac_networks.parametric_action_distribution.mode(logits), {}
-      return (
-          shac_networks.parametric_action_distribution.sample(
-              logits, key_sample
-          ),
-          {},
-      )
+      return jnp.clip(logits, -0.1, 0.1), {}
 
     return policy
 
@@ -44,29 +38,21 @@ def make_shac_networks(
     action_size: int,
     preprocess_observations_fn: types.PreprocessObservationFn = types
     .identity_observation_preprocessor,
-    policy_hidden_layer_sizes: Sequence[int] = (32,) * 4,
-    value_hidden_layer_sizes: Sequence[int] = (256,) * 5,
+    hidden_layer_sizes: Sequence[int] = (32,) * 4,
     activation: networks.ActivationFn = linen.elu,
-    layer_norm: bool = True) -> DiffRLSHACNetworks:
+    layer_norm: bool = True) -> UnrollAPGNetworks:
   """Make SHAC networks with preprocessor."""
   parametric_action_distribution = distribution.NormalTanhDistribution(
       event_size=action_size
   )
   policy_network = networks.make_policy_network(
-      parametric_action_distribution.param_size,
+      action_size,
       observation_size,
       preprocess_observations_fn=preprocess_observations_fn,
-      hidden_layer_sizes=policy_hidden_layer_sizes,
-      activation=activation,
-      layer_norm=layer_norm)
-  value_network = networks.make_value_network(
-      observation_size,
-      preprocess_observations_fn=preprocess_observations_fn,
-      hidden_layer_sizes=value_hidden_layer_sizes,
+      hidden_layer_sizes=hidden_layer_sizes,
       activation=activation,
       layer_norm=layer_norm)
 
-  return DiffRLSHACNetworks(
+  return UnrollAPGNetworks(
       policy_network=policy_network,
-      value_network=value_network,
       parametric_action_distribution=parametric_action_distribution)

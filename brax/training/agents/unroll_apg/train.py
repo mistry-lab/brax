@@ -8,10 +8,9 @@ from brax.training.acme import running_statistics, specs
 from brax.training import gradients
 from brax.v1 import envs as envs_v1
 
-from brax.training.agents.diffrl_shac import checkpoint
-from brax.training.agents.diffrl_shac import losses as shac_losses
-from brax.training.agents.diffrl_shac import networks as shac_networks
-from brax.training.agents.diffrl_shac.value_training_sample import ValueTrainingSample
+from brax.training.agents.unroll_apg import checkpoint
+from brax.training.agents.unroll_apg import losses as apg_losses
+from brax.training.agents.unroll_apg import networks as apg_networks
 
 from absl import logging
 
@@ -35,17 +34,10 @@ ReplayBufferState = Any
 _PMAP_AXIS_NAME = 'i'
 
 @flax.struct.dataclass
-class NetworkTrainingState:
-    optimizer_state: optax.OptState
-    params: Params
-    gradient_steps: jnp.ndarray
-
-@flax.struct.dataclass
 class TrainingState:
     """Contains training state for the learner."""
-    policy_training_state: NetworkTrainingState
-    value_training_state: NetworkTrainingState
-    target_value_params: Params
+    optimizer_state: optax.OptState
+    params: Params
     normalizer_params: running_statistics.RunningStatisticsState
     env_steps: jnp.ndarray
 
@@ -65,36 +57,22 @@ def _init_training_state(
     key: PRNGKey,
     obs_size: int,
     local_devices_to_use: int,
-    shac_network: shac_networks.DiffRLSHACNetworks,
+    apg_network: apg_networks.UnrollAPGNetworks,
     policy_optimizer: optax.GradientTransformation,
-    value_optimizer: optax.GradientTransformation,
 ) -> TrainingState:
     """Inits the training state and replicates it over devices."""
-    key_policy, key_value = jax.random.split(key)
-
-    policy_params = shac_network.policy_network.init(key_policy)
-    policy_optimizer_state = policy_optimizer.init(policy_params)
-    value_params = shac_network.value_network.init(key_value)
-    value_optimizer_state = value_optimizer.init(value_params)
+    params = apg_network.policy_network.init(key)
+    optimizer_state = policy_optimizer.init(params)
 
     normalizer_params = running_statistics.init_state(
         specs.Array((obs_size,), jnp.dtype('float32'))
     )
 
     training_state = TrainingState(
-        policy_training_state=NetworkTrainingState(
-            optimizer_state=policy_optimizer_state,
-            params=policy_params,
-            gradient_steps=jnp.zeros(()),
-        ),
-        value_training_state=NetworkTrainingState(
-            optimizer_state=value_optimizer_state,
-            params=value_params,
-            gradient_steps=jnp.zeros(()),
-        ),
-        target_value_params=value_params,
-        env_steps=jnp.zeros(()),
+        optimizer_state=optimizer_state,
+        params=params,
         normalizer_params=normalizer_params,
+        env_steps=jnp.zeros(()),
     )
     return jax.device_put_replicated(
         training_state, jax.local_devices()[:local_devices_to_use]
@@ -145,10 +123,7 @@ def train(
     # schedule parameters
     num_timesteps: int,
     max_devices_per_host: Optional[int] = None,
-    unroll_length: int = 10,  # horizon for short rollouts
     batch_size: int = 32,
-    num_minibatches: int = 4,
-    num_updates_per_batch: int = 2,
     # environment wrapper
     num_envs: int = 1,
     episode_length: Optional[int] = None,
@@ -160,19 +135,15 @@ def train(
     ] = None,
     # network parameters
     network_factory: types.NetworkFactory[
-              shac_networks.DiffRLSHACNetworks] = shac_networks.make_shac_networks,
-    actor_grad_norm: Optional[float] = None,  # clip actor and ciritc grad norms
-    critic_grad_norm: Optional[float] = None,
+              apg_networks.UnrollAPGNetworks] = apg_networks.make_shac_networks,
+    grad_norm: Optional[float] = None,  # clip actor and ciritc grad norms
     lr_schedule: str = "linear",
-    actor_lr: float = 2e-3,
-    critic_lr: float = 2e-3,
+    learning_rate: float = 2e-3,
     betas: Tuple[float, float] = (0.7, 0.95),
-    tau: float = 0.005,
     # SHAC params
     discounting: float = 0.9,
     normalize_observations: bool = False,
     reward_scaling: float = 1.,
-    gae_lambda: float = 0.95,
     seed: int = 0,
     # eval
     num_evals: int = 1,
@@ -190,17 +161,13 @@ def train(
     restore_value_fn: bool = True,
 ):
     # sanity check parameters
-    assert batch_size * num_minibatches  % num_envs == 0
+    assert batch_size  % num_envs == 0
 
-    assert unroll_length > 0
     assert num_timesteps >= 0
-    assert actor_lr >= 0
-    assert critic_lr >= 0
+    assert learning_rate >= 0
     assert lr_schedule in ["linear", "constant"]
     assert 0 < discounting <= 1
     assert reward_scaling > 0.0
-    assert num_minibatches > 0
-    assert 0 < tau <= 1.0
 
     xt = time.time()
 
@@ -225,7 +192,7 @@ def train(
 
     # The number of environment steps executed for every training step.
     env_step_per_training_step = (
-        unroll_length * action_repeat * batch_size * num_minibatches
+        action_repeat * batch_size * episode_length
     )
     num_evals_after_init = max(num_evals - 1, 1)
     # The number of training_step calls per training_epoch call.
@@ -262,41 +229,31 @@ def train(
     if normalize_observations:
         normalize = running_statistics.normalize
 
-    shac_network = network_factory(
+    apg_network = network_factory(
         environment.observation_size,
         environment.action_size,
         preprocess_observations_fn=normalize)
-    make_policy = shac_networks.make_inference_fn(shac_network)
+    make_policy = apg_networks.make_inference_fn(apg_network)
 
     # initialize optimizers
-    policy_optimizer = optax.adam(learning_rate=actor_lr, b1=betas[0], b2=betas[1])
-    if actor_grad_norm is not None:
+    policy_optimizer = optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
+    if grad_norm is not None:
         policy_optimizer = optax.chain(
-            optax.clip_by_global_norm(actor_grad_norm),
-            optax.adam(learning_rate=actor_lr, b1=betas[0], b2=betas[1])
+            optax.clip_by_global_norm(grad_norm),
+            optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
         )
 
-    value_optimizer = optax.adam(learning_rate=critic_lr, b1=betas[0], b2=betas[1])
-    if critic_grad_norm is not None:
-        value_optimizer = optax.chain(
-            optax.clip_by_global_norm(critic_grad_norm),
-            optax.adam(learning_rate=critic_lr, b1=betas[0], b2=betas[1]),
-        )
-
-    critic_loss, actor_loss = shac_losses.make_losses(
-        shac_network=shac_network,
+    loss_fn = functools.partial(apg_losses.compute_apg_loss,
+        apg_network=apg_network,
+        env=env,
+        episode_length=episode_length,
+        number=batch_size // num_envs,
         discounting=discounting,
         reward_scaling=reward_scaling,
-        gae_lambda=gae_lambda,
-        unroll_length=unroll_length,
-        number=batch_size * num_minibatches // num_envs
     )
 
-    critic_update = gradients.gradient_update_fn(
-      critic_loss, value_optimizer, pmap_axis_name=_PMAP_AXIS_NAME, has_aux=True)
-
     actor_update = gradients.gradient_update_fn(
-      actor_loss, policy_optimizer, pmap_axis_name=_PMAP_AXIS_NAME, has_aux=True)
+      loss_fn, policy_optimizer, pmap_axis_name=_PMAP_AXIS_NAME, has_aux=True)
 
     metrics_aggregator = metric_logger.EpisodeMetricsLogger(
         steps_between_logging=training_metrics_steps
@@ -311,60 +268,6 @@ def train(
         network_factory=network_factory,
     )
 
-    def minibatch_step(
-        network_state: NetworkTrainingState,
-        data: Transition,
-        normalizer_params: running_statistics.RunningStatisticsState,
-    ):
-        critic_loss, value_params, value_optimizer_state = critic_update(
-            network_state.params,
-            normalizer_params,
-            data,
-            optimizer_state=network_state.optimizer_state,
-        )
-
-        metrics = {
-            'critic_loss': critic_loss,
-        }
-
-        new_network_state = NetworkTrainingState(
-            params=value_params,
-            optimizer_state=value_optimizer_state,
-            gradient_steps=network_state.gradient_steps + 1
-        )
-        return new_network_state, metrics
-
-    def critic_sgd_step(
-        carry: Tuple[NetworkTrainingState, PRNGKey],
-        unused_t,
-        data: Transition,
-        normalizer_params: running_statistics.RunningStatisticsState,
-    ) -> Tuple[TrainingState, Metrics]:
-        network_state, key = carry
-        key, key_shuffle = jax.random.split(key)
-
-        def convert_data(x: jnp.ndarray):
-            x = jax.random.permutation(key_shuffle, x)
-            x = jnp.reshape(x, (num_minibatches, -1) + x.shape[1:])
-            return x
-
-        data = ValueTrainingSample(
-            observation=data.observation,
-            reward=data.reward,
-            discount=data.discount,
-            next_observation=data.next_observation,
-            truncation=data.extras['state_extras']['truncation']
-        )
-
-        shuffled_data = jax.tree_util.tree_map(convert_data, data)
-        network_state, metrics = jax.lax.scan(
-            functools.partial(minibatch_step, normalizer_params=normalizer_params),
-            network_state,
-            shuffled_data,
-            length=num_minibatches,
-        )
-        return (network_state, key), metrics
-
     def training_step(
         training_state: TrainingState,
         env_state: envs.State,
@@ -374,20 +277,16 @@ def train(
         Union[envs.State, envs_v1.State],
         Metrics,
     ]:
-        key_actor, key_critic = jax.random.split(key)
-
         # train actor
-        (_, extras), policy_params, policy_optimizer_state = actor_update(
-            training_state.policy_training_state.params,
-            training_state.target_value_params,
+        (_, extras), params, optimizer_state = actor_update(
+            training_state.params,
             training_state.normalizer_params,
-            key_actor,
-            env,
             env_state,
-            optimizer_state=training_state.policy_training_state.optimizer_state)
+            key,
+            optimizer_state=training_state.optimizer_state)
 
-        nstate = extras["final_state"]
         data = extras["data"]
+        next_state = extras["next_state"]
 
         if log_training_metrics:  # log unroll metrics
             jax.debug.callback(
@@ -404,36 +303,13 @@ def train(
         )
 
         training_state = training_state.replace(
-            policy_training_state=training_state.policy_training_state.replace(
-                params=policy_params,
-                optimizer_state=policy_optimizer_state,
-                gradient_steps=training_state.policy_training_state.gradient_steps + 1,
-            ),
+            params=params,
+            optimizer_state=optimizer_state,
             normalizer_params=normalizer_params,
             env_steps=training_state.env_steps + env_step_per_training_step,
         )
 
-        (value_network_state, _), metrics = jax.lax.scan(
-            functools.partial(
-                critic_sgd_step, data=data, normalizer_params=normalizer_params
-            ),
-            (training_state.value_training_state, key_critic),
-            (),
-            length=num_updates_per_batch,
-        )
-
-        target_value_params = jax.tree_util.tree_map(
-            lambda x, y: x * (1 - tau) + y * tau,
-            training_state.target_value_params,
-            value_network_state.params,
-        )
-
-        training_state = training_state.replace(
-            value_training_state=value_network_state,
-            target_value_params=target_value_params
-        )
-
-        return training_state, nstate, {} # metrics
+        return training_state, next_state, {} # metrics
 
     def training_epoch(
         training_state: TrainingState,
@@ -495,9 +371,8 @@ def train(
         key=global_key,
         obs_size=obs_size,
         local_devices_to_use=local_devices_to_use,
-        shac_network=shac_network,
+        apg_network=apg_network,
         policy_optimizer=policy_optimizer,
-        value_optimizer=value_optimizer,
     )
     del global_key
 
@@ -546,7 +421,7 @@ def train(
         metrics = evaluator.run_evaluation(
             _unpmap((
                 training_state.normalizer_params,
-                training_state.policy_training_state.params,
+                training_state.params,
             )),
             training_metrics={},
         )
@@ -576,7 +451,7 @@ def train(
         # Process id == 0.
         params = _unpmap((
             training_state.normalizer_params,
-            training_state.policy_training_state.params
+            training_state.params
         ))
 
         if save_checkpoint_path is not None:
@@ -599,8 +474,7 @@ def train(
     pmap.assert_is_replicated(training_state)
     params = _unpmap((
         training_state.normalizer_params,
-        training_state.policy_training_state.params,
-        training_state.value_training_state.params,
+        training_state.params,
     ))
     logging.info('total steps: %s', total_steps)
     pmap.synchronize_hosts()

@@ -26,14 +26,14 @@ def make_inference_fn(shac_networks: UnrollAPGNetworks):
         observations: types.Observation, key_sample: PRNGKey
     ) -> Tuple[types.Action, types.Extra]:
       logits = shac_networks.policy_network.apply(*params, observations)
-      return jnp.clip(logits, -0.1, 0.1), {}
+      return jnp.clip(logits, -0.01, 0.01), {}
 
     return policy
 
   return make_policy
 
 
-def make_shac_networks(
+def make_apg_networks(
     observation_size: int,
     action_size: int,
     preprocess_observations_fn: types.PreprocessObservationFn = types

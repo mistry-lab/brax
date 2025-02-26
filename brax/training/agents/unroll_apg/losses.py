@@ -27,7 +27,7 @@ from brax.training.agents.unroll_apg import networks as apg_networks
 from brax.training import acting
 from brax.training.types import Params
 
-def compute_td_value(
+def compute_discounted_reward(
     truncation: jnp.ndarray,
     termination: jnp.ndarray,
     rewards: jnp.ndarray,
@@ -95,7 +95,7 @@ def compute_apg_loss(
     truncation = ordered_data.extras['state_extras']['truncation']
     termination = (1 - ordered_data.discount) * (1 - truncation)
 
-    value = compute_td_value(
+    value = compute_discounted_reward(
         truncation=truncation,
         termination=termination,
         rewards=reward_scaling * ordered_data.reward,

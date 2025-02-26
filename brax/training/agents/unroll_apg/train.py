@@ -135,7 +135,7 @@ def train(
     ] = None,
     # network parameters
     network_factory: types.NetworkFactory[
-              apg_networks.UnrollAPGNetworks] = apg_networks.make_shac_networks,
+              apg_networks.UnrollAPGNetworks] = apg_networks.make_apg_networks,
     grad_norm: Optional[float] = None,  # clip actor and ciritc grad norms
     lr_schedule: str = "linear",
     learning_rate: float = 2e-3,

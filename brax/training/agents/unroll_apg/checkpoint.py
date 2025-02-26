@@ -55,7 +55,7 @@ def network_config(
   )
 
 
-def _get_diffrl_shac_network(
+def _get_unroll_apg_network(
     config: config_dict.ConfigDict,
     network_factory: types.NetworkFactory[apg_networks.UnrollAPGNetworks],
 ) -> apg_networks.UnrollAPGNetworks:
@@ -67,7 +67,7 @@ def load_policy(
     path: Union[str, epath.Path],
     network_factory: types.NetworkFactory[
         apg_networks.UnrollAPGNetworks
-    ] = apg_networks.UnrollAPGNetworks,
+    ] = apg_networks.make_apg_networks,
     deterministic: bool = True,
 ):
   """Loads policy inference function from SHAC checkpoint."""
@@ -80,7 +80,7 @@ def load_policy(
   config = config_dict.create(**json.loads(config_path.read_text()))
 
   params = load(path)
-  shac_network = _get_diffrl_shac_network(config, network_factory)
+  shac_network = _get_unroll_apg_network(config, network_factory)
   make_inference_fn = apg_networks.make_inference_fn(shac_network)
 
   return make_inference_fn(params, deterministic=deterministic)

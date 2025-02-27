@@ -6,6 +6,8 @@ import importlib
 import yaml
 import json
 import argparse
+import logging
+import sys
 
 import argcomplete
 from dotenv import load_dotenv
@@ -15,6 +17,8 @@ from mujoco import viewer
 
 import jax
 from brax.envs.fd import get_environment
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 remote_config_filename = "resolved_config.yaml"
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -114,13 +118,6 @@ def main():
     load_dotenv()
     args = get_command_line_args()
 
-    address = args.address if args.address else os.environ["ADDRESS"]  
-    username = "alexaldermanwebb"
-    path = get_most_recent_parameters_path(address, username, args.password)
-
-    train_dir = path.parents[1]
-    isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
-    
     run_config = None
 
     if args.seed:
@@ -128,6 +125,14 @@ def main():
             paths = [line.strip() for line in f.readlines()]
             config_path, policy_parameters_path = paths
     else:
+        address = args.address if args.address else os.environ["ADDRESS"]  
+        username = "alexaldermanwebb"
+        path = get_most_recent_parameters_path(address, username, args.password)
+
+        train_dir = path.parents[1]
+        isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
+        logging.info(f"Loading training run in {isotime}")
+        
         config_path = get_config(address, train_dir, isotime, args.password)
 
         with open(config_path, "r") as f:
@@ -162,7 +167,7 @@ def main():
     jit_env_reset = jax.jit(env.reset)
 
     load_policy = getattr(checkpoint, "load_policy")
-    inference_fn = load_policy(policy_parameters_path)
+    inference_fn = load_policy(path=policy_parameters_path)
 
     jit_env_step = jax.jit(env.step)
     jit_inference_fn = jax.jit(inference_fn)
@@ -174,8 +179,8 @@ def main():
             [f"{config_path}\n", policy_parameters_path]
         )
 
-    data = mujoco.MjData(env.model)
-    visualise_traj_generic(trajectory, data, env.model)
+    data = mujoco.MjData(env.sys.mj_model)
+    visualise_traj_generic(trajectory, data, env.sys.mj_model)
 
 if __name__=='__main__':
     main()

@@ -67,7 +67,7 @@ def load_policy(
     path: Union[str, epath.Path],
     network_factory: types.NetworkFactory[
         apg_networks.UnrollAPGNetworks
-    ] = apg_networks.make_apg_networks,
+    ] = apg_networks.make_apg_network,
     deterministic: bool = True,
 ):
   """Loads policy inference function from SHAC checkpoint."""

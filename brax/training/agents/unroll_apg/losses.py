@@ -89,6 +89,13 @@ def compute_apg_loss(
         length=number,
     )
 
+    # Have leading dimensions (number * num_envs, episode_length)
+    data = jax.tree_util.tree_map(lambda x: jnp.swapaxes(x, 1, 2), data)
+    data = jax.tree_util.tree_map(
+        lambda x: jnp.reshape(x, (-1,) + x.shape[2:]), data
+    )
+    assert data.discount.shape[1:] == (episode_length,)
+
     # Put the time dimension first.
     ordered_data = jax.tree_util.tree_map(lambda x: jnp.swapaxes(x, 0, 1), data)
 

@@ -26,6 +26,7 @@ from flax import linen
 import jax
 import jax.numpy as jnp
 
+from flax.typing import Dtype
 
 ActivationFn = Callable[[jnp.ndarray], jnp.ndarray]
 Initializer = Callable[..., Any]
@@ -46,6 +47,7 @@ class MLP(linen.Module):
   activate_final: bool = False
   bias: bool = True
   layer_norm: bool = False
+  dtype: Dtype = jnp.float32
 
   @linen.compact
   def __call__(self, data: jnp.ndarray):
@@ -56,6 +58,7 @@ class MLP(linen.Module):
           name=f'hidden_{i}',
           kernel_init=self.kernel_init,
           use_bias=self.bias,
+          param_dtype=self.dtype
       )(hidden)
       if i != len(self.layer_sizes) - 1 or self.activate_final:
         hidden = self.activation(hidden)
@@ -190,6 +193,7 @@ def make_policy_network(
     kernel_init: Initializer = jax.nn.initializers.lecun_uniform(),
     layer_norm: bool = False,
     obs_key: str = 'state',
+    dtype: Dtype = jnp.float32,
 ) -> FeedForwardNetwork:
   """Creates a policy network."""
   policy_module = MLP(
@@ -197,6 +201,7 @@ def make_policy_network(
       activation=activation,
       kernel_init=kernel_init,
       layer_norm=layer_norm,
+      dtype=dtype,
   )
 
   def apply(processor_params, policy_params, obs):
@@ -205,7 +210,7 @@ def make_policy_network(
     return policy_module.apply(policy_params, obs)
 
   obs_size = _get_obs_state_size(obs_size, obs_key)
-  dummy_obs = jnp.zeros((1, obs_size))
+  dummy_obs = jnp.zeros((1, obs_size), dtype=dtype)
   return FeedForwardNetwork(
       init=lambda key: policy_module.init(key, dummy_obs), apply=apply
   )
@@ -218,6 +223,7 @@ def make_value_network(
     activation: ActivationFn = linen.relu,
     layer_norm: bool = False,
     obs_key: str = 'state',
+    dtype: Dtype = jnp.float32
 ) -> FeedForwardNetwork:
   """Creates a value network."""
   value_module = MLP(
@@ -225,6 +231,7 @@ def make_value_network(
       activation=activation,
       layer_norm=layer_norm,
       kernel_init=jax.nn.initializers.lecun_uniform(),
+      dtype=dtype,
   )
 
   def apply(processor_params, value_params, obs):
@@ -233,7 +240,7 @@ def make_value_network(
     return jnp.squeeze(value_module.apply(value_params, obs), axis=-1)
 
   obs_size = _get_obs_state_size(obs_size, obs_key)
-  dummy_obs = jnp.zeros((1, obs_size))
+  dummy_obs = jnp.zeros((1, obs_size), dtype=dtype)
   return FeedForwardNetwork(
       init=lambda key: value_module.init(key, dummy_obs), apply=apply
   )

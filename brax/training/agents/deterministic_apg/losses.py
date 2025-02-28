@@ -79,6 +79,7 @@ def compute_apg_loss(
           current_key,
           episode_length,
           extra_fields=('truncation', 'episode_metrics', 'episode_done'),
+          include_time=True,
       )
       return (next_state, next_key), data
 

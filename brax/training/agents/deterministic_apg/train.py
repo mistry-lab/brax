@@ -236,7 +236,7 @@ def train(
     make_policy = apg_networks.make_inference_fn(apg_network)
 
     # initialize optimizers
-    policy_optimizer = optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
+    optimizer = optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
     if grad_norm is not None:
         optimizer = optax.chain(
             optax.clip_by_global_norm(grad_norm),
@@ -414,7 +414,8 @@ def train(
         num_eval_envs=num_eval_envs,
         episode_length=episode_length,
         action_repeat=action_repeat,
-        key=eval_key)
+        key=eval_key,
+        include_time=True)
 
     # Run initial eval
     metrics = {}

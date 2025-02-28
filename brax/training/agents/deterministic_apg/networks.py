@@ -21,9 +21,9 @@ def make_inference_fn(apg_networks: DeterministicAPGNetworks):
   ) -> types.Policy:
 
     def policy(
-        observations: types.Observation, key_sample: PRNGKey
+        observations: types.Observation, key_sample: PRNGKey, step: int
     ) -> Tuple[types.Action, types.Extra]:
-      return apg_networks.policy_network.apply(*params, observations), {}
+      return apg_networks.policy_network.apply(*params, observations, step), {}
 
     return policy
 

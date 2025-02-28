@@ -204,13 +204,13 @@ def make_policy_network(
       dtype=dtype,
   )
 
-  def apply(processor_params, policy_params, obs):
+  def apply(processor_params, policy_params, obs, step):
     obs = preprocess_observations_fn(obs, processor_params)
     obs = obs if isinstance(obs, jax.Array) else obs[obs_key]
-    return policy_module.apply(policy_params, obs)
+    return policy_module.apply(policy_params, jnp.concatenate((obs, step), axis=1))
 
   obs_size = _get_obs_state_size(obs_size, obs_key)
-  dummy_obs = jnp.zeros((1, obs_size))
+  dummy_obs = jnp.zeros((1, obs_size + 1))
   return FeedForwardNetwork(
       init=lambda key: policy_module.init(key, dummy_obs), apply=apply
   )

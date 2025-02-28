@@ -150,12 +150,12 @@ def train(cfg: DictConfig):
     if "network_factory_path" in cfg.alg:
         network_factory_path = importlib.import_module(cfg.alg.network_factory_path)
         network_factory = getattr(network_factory_path, cfg.alg.make_network_fn_name)
+        network_kwargs = {
+            key: OmegaConf.to_object(cfg.alg.network_factory_params[key]) \
+                for key in cfg.alg.network_factory_params}
         network_factory = functools.partial(
             network_factory,
-            policy_hidden_layer_sizes= \
-                OmegaConf.to_object(cfg.alg.network_factory_params.policy_hidden_layer_sizes),
-            value_hidden_layer_sizes= \
-                OmegaConf.to_object(cfg.alg.network_factory_params.value_hidden_layer_sizes)
+            **network_kwargs
         )
         kwrd_args["network_factory"] = network_factory
 

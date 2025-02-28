@@ -58,11 +58,11 @@ def _init_training_state(
     obs_size: int,
     local_devices_to_use: int,
     apg_network: apg_networks.UnrollAPGNetworks,
-    policy_optimizer: optax.GradientTransformation,
+    optimizer: optax.GradientTransformation,
 ) -> TrainingState:
     """Inits the training state and replicates it over devices."""
     params = apg_network.policy_network.init(key)
-    optimizer_state = policy_optimizer.init(params)
+    optimizer_state = optimizer.init(params)
 
     normalizer_params = running_statistics.init_state(
         specs.Array((obs_size,), jnp.dtype('float32'))
@@ -238,7 +238,7 @@ def train(
     # initialize optimizers
     policy_optimizer = optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
     if grad_norm is not None:
-        policy_optimizer = optax.chain(
+        optimizer = optax.chain(
             optax.clip_by_global_norm(grad_norm),
             optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
         )
@@ -253,7 +253,7 @@ def train(
     )
 
     actor_update = gradients.gradient_update_fn(
-      loss_fn, policy_optimizer, pmap_axis_name=_PMAP_AXIS_NAME, has_aux=True)
+      loss_fn, optimizer, pmap_axis_name=_PMAP_AXIS_NAME, has_aux=True)
 
     metrics_aggregator = metric_logger.EpisodeMetricsLogger(
         steps_between_logging=training_metrics_steps
@@ -287,6 +287,7 @@ def train(
 
         data = extras["data"]
         next_state = extras["next_state"]
+        metrics = extras["metrics"]
 
         if log_training_metrics:  # log unroll metrics
             jax.debug.callback(
@@ -309,7 +310,7 @@ def train(
             env_steps=training_state.env_steps + env_step_per_training_step,
         )
 
-        return training_state, next_state, {} # metrics
+        return training_state, next_state, metrics
 
     def training_epoch(
         training_state: TrainingState,
@@ -372,7 +373,7 @@ def train(
         obs_size=obs_size,
         local_devices_to_use=local_devices_to_use,
         apg_network=apg_network,
-        policy_optimizer=policy_optimizer,
+        optimizer=optimizer,
     )
     del global_key
 

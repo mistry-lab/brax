@@ -102,14 +102,15 @@ def compute_apg_loss(
     truncation = ordered_data.extras['state_extras']['truncation']
     termination = (1 - ordered_data.discount) * (1 - truncation)
 
-    value = compute_discounted_reward(
+    loss = -compute_discounted_reward(
         truncation=truncation,
         termination=termination,
         rewards=reward_scaling * ordered_data.reward,
         discount=discounting
     )
 
-    return jnp.mean(value), {
+    return jnp.mean(loss), {
         "data": data,
-        "next_state": next_state
+        "next_state": next_state,
+        "metrics": {},
     }

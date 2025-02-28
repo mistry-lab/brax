@@ -41,7 +41,7 @@ def make_apg_network(
     hidden_layer_sizes: Sequence[int] = (32,) * 4,
     activation: networks.ActivationFn = linen.elu,
     layer_norm: bool = True,
-    dtype: Dtype = jnp.float64) -> UnrollAPGNetworks:
+    dtype: Dtype = 'float64') -> UnrollAPGNetworks:
   """Make SHAC networks with preprocessor."""
   parametric_action_distribution = distribution.NormalTanhDistribution(
       event_size=action_size
@@ -53,7 +53,7 @@ def make_apg_network(
       hidden_layer_sizes=hidden_layer_sizes,
       activation=activation,
       layer_norm=layer_norm,
-      dtype=dtype)
+      dtype=jnp.dtype(dtype))
 
   return UnrollAPGNetworks(
       policy_network=policy_network,

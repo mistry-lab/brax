@@ -285,6 +285,7 @@ def train(
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
+        env=env,
         discounting=discounting,
         reward_scaling=reward_scaling,
         gae_lambda=gae_lambda,
@@ -382,7 +383,6 @@ def train(
             training_state.target_value_params,
             training_state.normalizer_params,
             key_actor,
-            env,
             env_state,
             optimizer_state=training_state.policy_training_state.optimizer_state)
 
@@ -538,7 +538,8 @@ def train(
         num_eval_envs=num_eval_envs,
         episode_length=episode_length,
         action_repeat=action_repeat,
-        key=eval_key)
+        key=eval_key,
+        include_time=True)
 
     # Run initial eval
     metrics = {}

@@ -33,7 +33,8 @@ def generate_batched_unroll(
             policy=policy,
             key=key,
             unroll_length=unroll_length,
-            extra_fields=extra_fields
+            extra_fields=extra_fields,
+            include_time=True,
         )
 
         data = types.Transition(

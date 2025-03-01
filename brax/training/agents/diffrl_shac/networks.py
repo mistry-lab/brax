@@ -6,6 +6,7 @@ from brax.training import types
 from brax.training.types import PRNGKey
 import flax
 from flax import linen
+from flax.typing import Dtype
 
 
 @flax.struct.dataclass
@@ -22,9 +23,9 @@ def make_inference_fn(shac_networks: DiffRLSHACNetworks):
   ) -> types.Policy:
 
     def policy(
-        observations: types.Observation, key_sample: PRNGKey
+        observations: types.Observation, key_sample: PRNGKey, step: int
     ) -> Tuple[types.Action, types.Extra]:
-      logits = shac_networks.policy_network.apply(*params, observations)
+      logits = shac_networks.policy_network.apply(*params, observations, step)
       if deterministic:
         return shac_networks.parametric_action_distribution.mode(logits), {}
       return (
@@ -47,7 +48,8 @@ def make_shac_networks(
     policy_hidden_layer_sizes: Sequence[int] = (32,) * 4,
     value_hidden_layer_sizes: Sequence[int] = (256,) * 5,
     activation: networks.ActivationFn = linen.elu,
-    layer_norm: bool = True) -> DiffRLSHACNetworks:
+    layer_norm: bool = True,
+    dtype: Dtype = 'float64') -> DiffRLSHACNetworks:
   """Make SHAC networks with preprocessor."""
   parametric_action_distribution = distribution.NormalTanhDistribution(
       event_size=action_size
@@ -58,13 +60,15 @@ def make_shac_networks(
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=policy_hidden_layer_sizes,
       activation=activation,
-      layer_norm=layer_norm)
+      layer_norm=layer_norm,
+      dtype=dtype)
   value_network = networks.make_value_network(
       observation_size,
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=value_hidden_layer_sizes,
       activation=activation,
-      layer_norm=layer_norm)
+      layer_norm=layer_norm,
+      dtype=dtype)
 
   return DiffRLSHACNetworks(
       policy_network=policy_network,

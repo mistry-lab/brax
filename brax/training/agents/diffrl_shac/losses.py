@@ -129,6 +129,7 @@ def compute_td_value(
 
 def make_losses(
     shac_network: shac_networks.DiffRLSHACNetworks,
+    env: envs.Env,
     discounting: float,
     reward_scaling: float,
     gae_lambda: float,
@@ -174,7 +175,6 @@ def make_losses(
         value_params: Params,
         normalizer_params: Any,
         key: PRNGKey,
-        env: envs.Env,
         env_state: envs.State
     ):
         policy = make_policy((normalizer_params, policy_params))
@@ -200,7 +200,7 @@ def make_losses(
 
         termination = (1 - ordered_data.discount) * (1 - truncation)
 
-        value = compute_td_value(
+        loss = -compute_td_value(
             truncation=truncation,
             termination=termination,
             rewards=ordered_data.reward,
@@ -209,7 +209,7 @@ def make_losses(
             discount=discounting
         )
 
-        return jnp.mean(value), {
+        return jnp.mean(loss), {
             "final_state": final_state,
             "data": data
         }

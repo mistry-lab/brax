@@ -27,7 +27,7 @@ from brax.training.agents.unroll_apg import networks as apg_networks
 from brax.training import acting
 from brax.training.types import Params
 
-def compute_discounted_reward(
+def compute_weighted_and_discounted_reward(
     truncation: jnp.ndarray,
     termination: jnp.ndarray,
     rewards: jnp.ndarray,
@@ -63,6 +63,7 @@ def compute_apg_loss(
     env: envs.Env,
     episode_length: int,
     number: int,
+    entropy_cost: float,
     discounting: float,
     reward_scaling: float
 ):
@@ -70,17 +71,18 @@ def compute_apg_loss(
     policy = make_policy((normalizer_params, params))
 
     def f(carry, unused_t):
-      current_state, current_key = carry
-      current_key, next_key = jax.random.split(current_key)
-      next_state, data = acting.generate_unroll(
-          env,
-          current_state,
-          policy,
-          current_key,
-          episode_length,
-          extra_fields=('truncation', 'episode_metrics', 'episode_done'),
-      )
-      return (next_state, next_key), data
+        current_state, current_key = carry
+        current_key, next_key = jax.random.split(current_key)
+        next_state, data = acting.generate_unroll(
+            env,
+            current_state,
+            policy,
+            current_key,
+            episode_length,
+            extra_fields=('truncation', 'episode_metrics', 'episode_done', 'steps'),
+            include_time=True,
+        )
+        return (next_state, next_key), data
 
     (next_state, _), data = jax.lax.scan(
         f,
@@ -102,15 +104,31 @@ def compute_apg_loss(
     truncation = ordered_data.extras['state_extras']['truncation']
     termination = (1 - ordered_data.discount) * (1 - truncation)
 
-    loss = -compute_discounted_reward(
+    # Entropy reward
+    policy_logits = apg_network.policy_network.apply(
+        normalizer_params,
+        params,
+        ordered_data.observation,
+        jnp.expand_dims(ordered_data.extras['state_extras']['steps'], axis=-1),
+    )
+    entropy = jnp.mean(apg_network.parametric_action_distribution.entropy(policy_logits, rng))
+    entropy_loss = entropy_cost * -entropy
+
+    v_loss = -compute_weighted_and_discounted_reward(
         truncation=truncation,
         termination=termination,
         rewards=reward_scaling * ordered_data.reward,
         discount=discounting
     )
 
-    return jnp.mean(loss), {
+    total_loss = v_loss + jax.lax.stop_gradient(entropy_loss)
+
+    return jnp.mean(total_loss), {
         "data": data,
         "next_state": next_state,
-        "metrics": {},
+        "metrics": {
+            'total_loss': total_loss,
+            'v_loss': jnp.mean(v_loss),
+            'entropy_loss': entropy_loss,
+        },
     }

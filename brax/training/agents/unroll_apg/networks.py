@@ -23,10 +23,17 @@ def make_inference_fn(apg_networks: UnrollAPGNetworks):
   ) -> types.Policy:
 
     def policy(
-        observations: types.Observation, key_sample: PRNGKey
+        observations: types.Observation, key_sample: PRNGKey, step: int
     ) -> Tuple[types.Action, types.Extra]:
-      logits = apg_networks.policy_network.apply(*params, observations)
-      return logits, {}
+      logits = apg_networks.policy_network.apply(*params, observations, step)
+      if deterministic:
+        return apg_networks.parametric_action_distribution.mode(logits), {}
+      return (
+          apg_networks.parametric_action_distribution.sample(
+              logits, key_sample
+          ),
+          {},
+      )
 
     return policy
 
@@ -47,7 +54,7 @@ def make_apg_network(
       event_size=action_size
   )
   policy_network = networks.make_policy_network(
-      action_size,
+      parametric_action_distribution.param_size,
       observation_size,
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=hidden_layer_sizes,

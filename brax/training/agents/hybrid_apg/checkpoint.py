@@ -23,7 +23,7 @@ from brax.training.agents.hybrid_apg import networks as hybrid_apg_networks
 from etils import epath
 from ml_collections import config_dict
 
-_CONFIG_FNAME = 'diffrl_shac_network_config.json'
+_CONFIG_FNAME = 'hybrid_apg_network_config.json'
 
 
 def save(

@@ -24,7 +24,7 @@ from typing import Any, Tuple
 
 from brax import envs
 from brax.training.agents.hybrid_apg import networks as apg_networks
-from brax.training.agents.diffrl_shac.unroll import generate_batched_unroll
+from brax.training.batched_unroll import generate_batched_unroll
 from brax.training.types import Metrics, Params, PRNGKey, Transition
 
 def compute_gae(
@@ -241,8 +241,8 @@ def make_losses(
         policy_params: Params,
         value_params: Params,
         normalizer_params: Any,
+        env_state: envs.State,
         key: PRNGKey,
-        env_state: envs.State
     ):
         policy = make_policy((normalizer_params, policy_params))
 

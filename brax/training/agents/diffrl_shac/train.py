@@ -3,7 +3,7 @@ from brax import base
 from brax.training import types, acting
 from brax.training import pmap
 from brax.training import logger as metric_logger
-from brax.training.types import Params, PRNGKey
+from brax.training.types import Params, PRNGKey, ValueTrainingSample
 from brax.training.acme import running_statistics, specs
 from brax.training import gradients
 from brax.v1 import envs as envs_v1
@@ -11,7 +11,6 @@ from brax.v1 import envs as envs_v1
 from brax.training.agents.diffrl_shac import checkpoint
 from brax.training.agents.diffrl_shac import losses as shac_losses
 from brax.training.agents.diffrl_shac import networks as shac_networks
-from brax.training.agents.diffrl_shac.value_training_sample import ValueTrainingSample
 
 from absl import logging
 
@@ -382,8 +381,8 @@ def train(
             training_state.policy_training_state.params,
             training_state.target_value_params,
             training_state.normalizer_params,
-            key_actor,
             env_state,
+            key_actor,
             optimizer_state=training_state.policy_training_state.optimizer_state)
 
         nstate = extras["final_state"]

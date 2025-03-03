@@ -23,7 +23,7 @@ from typing import Any
 from brax import envs
 
 from brax.training.agents.ihac import networks as ihac_networks
-from brax.training.agents.diffrl_shac.unroll import generate_batched_unroll
+from brax.training.batched_unroll import generate_batched_unroll
 
 from brax.training.types import Params, PRNGKey, ValueTrainingSample
 

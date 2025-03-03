@@ -25,10 +25,9 @@ from typing import Any
 from brax import envs
 
 from brax.training.agents.diffrl_shac import networks as shac_networks
-from brax.training.agents.diffrl_shac.unroll import generate_batched_unroll
-from brax.training.agents.diffrl_shac.value_training_sample import ValueTrainingSample
+from brax.training.batched_unroll import generate_batched_unroll
 
-from brax.training.types import Params, PRNGKey
+from brax.training.types import Params, PRNGKey, ValueTrainingSample
 
 
 def compute_gae(
@@ -174,8 +173,8 @@ def make_losses(
         policy_params: Params,
         value_params: Params,
         normalizer_params: Any,
+        env_state: envs.State,
         key: PRNGKey,
-        env_state: envs.State
     ):
         policy = make_policy((normalizer_params, policy_params))
 

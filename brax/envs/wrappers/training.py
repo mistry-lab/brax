@@ -67,8 +67,8 @@ class VmapWrapper(Wrapper):
       rng = jax.random.split(rng, self.batch_size)
     return jax.vmap(self.env.reset)(rng)
 
-  def step(self, state: State, action: jax.Array) -> State:
-    return jax.vmap(self.env.step)(state, action)
+  def step(self, state: State, action: jax.Array, **kwargs) -> State:
+    return jax.vmap(self.env.step, in_axes=(0, 0, None))(state, action, kwargs.get("analytic", False))
 
 
 class EpisodeWrapper(Wrapper):
@@ -94,9 +94,9 @@ class EpisodeWrapper(Wrapper):
     state.info['episode_metrics'] = episode_metrics
     return state
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, **kwargs) -> State:
     def f(state, _):
-      nstate = self.env.step(state, action)
+      nstate = self.env.step(state, action, **kwargs)
       return nstate, nstate.reward
 
     state, rewards = jax.lax.scan(f, state, (), self.action_repeat)
@@ -134,13 +134,13 @@ class AutoResetWrapper(Wrapper):
     state.info['first_obs'] = state.obs
     return state
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, **kwargs) -> State:
     if 'steps' in state.info:
       steps = state.info['steps']
       steps = jp.where(state.done, jp.zeros_like(steps), steps)
       state.info.update(steps=steps)
     state = state.replace(done=jp.zeros_like(state.done))
-    state = self.env.step(state, action)
+    state = self.env.step(state, action, **kwargs)
 
     def where_done(x, y):
       done = state.done
@@ -187,14 +187,14 @@ class EvalWrapper(Wrapper):
     reset_state.info['eval_metrics'] = eval_metrics
     return reset_state
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, **kwargs) -> State:
     state_metrics = state.info['eval_metrics']
     if not isinstance(state_metrics, EvalMetrics):
       raise ValueError(
           f'Incorrect type for state_metrics: {type(state_metrics)}'
       )
     del state.info['eval_metrics']
-    nstate = self.env.step(state, action)
+    nstate = self.env.step(state, action, **kwargs)
     nstate.metrics['reward'] = nstate.reward
     episode_steps = jp.where(
         state_metrics.active_episodes,
@@ -241,10 +241,10 @@ class DomainRandomizationVmapWrapper(Wrapper):
     state = jax.vmap(reset, in_axes=[self._in_axes, 0])(self._sys_v, rng)
     return state
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, **kwargs) -> State:
     def step(sys, s, a):
       env = self._env_fn(sys=sys)
-      return env.step(s, a)
+      return env.step(s, a, **kwargs)
 
     res = jax.vmap(step, in_axes=[self._in_axes, 0, 0])(
         self._sys_v, state, action

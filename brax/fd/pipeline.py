@@ -8,9 +8,63 @@ import numpy as np
 from jax._src.util import unzip2
 
 from brax.fd.fd_cache import FDCache
+from brax.fd.base import State
+from brax.base import Motion, System, Transform
+
+def upscale(x):
+    if 'dtype' in dir(x):
+        if x.dtype == jnp.int32:
+            return jnp.int64(x)
+        elif x.dtype == jnp.float32:
+            return jnp.float64(x)
+    return x
+
+def make_upscaled_data(mx: mjx.Data):
+    dx_template = mjx.make_data(mx)
+    dx_template = jax.tree.map(upscale, dx_template)
+    return dx_template
+
+def init(
+        sys: System,
+        q: jax.Array,
+        qd: jax.Array,
+        act: Optional[jax.Array] = None,
+        ctrl: Optional[jax.Array] = None,
+        unused_debug: bool = False,
+    ) -> State:
+    """Initializes physics data.
+
+    Args:
+        sys: a brax System
+        q: (q_size,) joint angle vector
+        qd: (qd_size,) joint velocity vector
+        act: actuator activations
+        ctrl: actuator controls
+        unused_debug: ignored
+
+    Returns:
+        data: initial physics data
+    """
+    data = make_upscaled_data(sys)
+    data = data.replace(qpos=q, qvel=qd)
+    if act is not None:
+        data = data.replace(act=act)
+    if ctrl is not None:
+        data = data.replace(ctrl=ctrl)
+
+    data = mjx.forward(sys, data)
+
+    q, qd = data.qpos, data.qvel
+    x = Transform(pos=data.xpos[1:], rot=data.xquat[1:])
+    cvel = Motion(vel=data.cvel[1:, 3:], ang=data.cvel[1:, :3])
+    offset = data.xpos[1:, :] - data.subtree_com[sys.body_rootid[1:]]
+    offset = Transform.create(pos=offset)
+    xd = offset.vmap().do(cvel)
+
+    return State(q=q, qd=qd, x=x, xd=xd, **data.__dict__)
 
 def build_fd_cache(
-    dx_ref: mjx.Data,
+    dx_ref: State,
     target_fields: Optional[Set[str]] = None,
     eps: float = 1e-6
 ) -> FDCache:
@@ -68,7 +122,7 @@ def build_fd_cache(
     )
 
 def make_step_fn(
-    mx: mjx.Model,
+    sys: System,
     set_control_fn: Callable,
     fd_cache: FDCache
 ):
@@ -78,20 +132,27 @@ def make_step_fn(
     """
 
     @jax.custom_vjp
-    def step_fn(dx: mjx.Data, u: jnp.ndarray):
+    def step_fn(state: State, u: jnp.ndarray):
         """
         Forward pass:
           1) Writes 'u' into dx_init (or a copy thereof) via set_control_fn.
           2) Steps the simulation forward one step with MuJoCo.
         """
-        dx_with_ctrl = set_control_fn(dx, u)
-        dx_next = mjx.step(mx, dx_with_ctrl)
+        dx_with_ctrl = set_control_fn(state, u)
+        dx_next = mjx.step(sys, dx_with_ctrl)
 
-        return dx_next
+        q, qd = dx_next.qpos, dx_next.qvel
+        x = Transform(pos=dx_next.xpos[1:], rot=dx_next.xquat[1:])
+        cvel = Motion(vel=dx_next.cvel[1:, 3:], ang=dx_next.cvel[1:, :3])
+        offset = dx_next.xpos[1:, :] - dx_next.subtree_com[sys.body_rootid[1:]]
+        offset = Transform.create(pos=offset)
+        xd = offset.vmap().do(cvel)
 
-    def step_fn_fwd(dx: mjx.Data, u: jnp.ndarray):
-        dx_next = step_fn(dx, u)
-        return dx_next, (dx, u, dx_next)
+        return dx_next.replace(q=q, qd=qd, x=x, xd=xd)
+
+    def step_fn_fwd(state: State, u: jnp.ndarray):
+        dx_next = step_fn(state, u)
+        return dx_next, (state, u, dx_next)
 
     def step_fn_bwd(res, g):
         """

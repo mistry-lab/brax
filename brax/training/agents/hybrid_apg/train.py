@@ -379,8 +379,8 @@ def train(
             training_state.policy_training_state.params,
             training_state.value_training_state.params,
             training_state.normalizer_params,
-            key_actor,
             env_state,
+            key_actor,
             optimizer_state=training_state.policy_training_state.optimizer_state)
 
         nstate = extras["final_state"]

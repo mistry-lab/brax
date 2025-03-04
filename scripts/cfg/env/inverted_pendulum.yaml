@@ -2,7 +2,7 @@ name: inverted_pendulum
 
 config:
   # schedule parameters
-  num_timesteps: 50_000_000
+  num_timesteps: 1_000_000
 
   # environment wrapper
   num_envs: 2048
@@ -48,5 +48,5 @@ diffrl_shac:
   # num_updates_per_batch: 16
   # num_envs: 64
 
-  actor_lr: 3e-4
+  actor_lr: 1e-2
   critic_lr: 1e-3

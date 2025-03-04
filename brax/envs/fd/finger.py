@@ -14,10 +14,7 @@ class Finger(FDEnv):
     def __init__(self, **kwargs):
         path = epath.resource_path('brax') / 'envs/assets/fd/finger_mjx.xml'
         sys = mjcf.load(path)
-        super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
-
-    def set_control(self, dx, u):
-        return dx.replace(ctrl=dx.ctrl.at[:].set(u))
+        super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl", "sensordata"}, **kwargs)
 
     def _angle_axis_to_quaternion(self, angle_axis):
         """
@@ -56,7 +53,7 @@ class Finger(FDEnv):
         )
         return quaternion
 
-    def reset(self, rng: jax.Array, upscale=False) -> State:
+    def reset(self, rng: jax.Array) -> State:
         qpos_init = self._generate_initial_conditions(rng)
         qvel_init = jnp.zeros_like(qpos_init)  # or any distribution you like
 
@@ -64,21 +61,53 @@ class Finger(FDEnv):
         obs = self._get_observation(dx0)
 
         reward, done, zero = jnp.zeros(3)
-        metrics = {}
+        metrics = {
+            'reward_target': zero,
+            'reward_ctrl': zero,
+            'reward_touch': zero,
+        }
 
         return State(dx0, obs, reward, done, metrics)
 
-    def step(self, state: State, u: jnp.ndarray) -> State:
+    def step(self, state: State, u: jnp.ndarray, analytic: bool = False) -> State:
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
-        reward = -self._running_cost(dx_next)
+        pos_finger = dx_next.qpos[2]
+        u = dx_next.ctrl
+
+        touch = dx_next.sensordata[0]
+        p_finger = dx_next.sensordata[1:4]
+        p_target = dx_next.sensordata[4:7]
+
+        touch_reward = - 0.001 * touch * pos_finger **2
+
+        if analytic:
+            state.metrics.update(
+                reward_target = jnp.zeros_like(touch_reward),
+                reward_ctrl = jnp.zeros_like(touch_reward),
+                reward_touch = touch_reward
+            )
+
+            return state.replace(
+                pipeline_state=dx_next, obs=obs, reward=reward
+            )
+
+        target_reward = - 0.1 * jnp.sum((p_finger - p_target)**2)
+        ctrl_reward = - 0.00005 * jnp.sum(u ** 2)
+        reward = target_reward + ctrl_reward + touch_reward
+
+        state.metrics.update(
+            reward_target = target_reward,
+            reward_ctrl = ctrl_reward,
+            reward_touch = touch_reward
+        )
 
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward
         )
 
-    def _get_observation(self, dx: mjx.Data):
+    def _get_observation(self, dx: State):
         return jnp.concatenate([dx.qpos, dx.qvel])
 
     def _generate_initial_conditions(self, key: jax.Array) -> State:
@@ -110,8 +139,3 @@ class Finger(FDEnv):
         # dx = dx.replace(qpos=dx.qpos.at[2].set(theta[0]))
 
         return jnp.concatenate([q0,q1,theta])
-
-    def _running_cost(self, dx: mjx.Data):
-        pos_finger = dx.qpos[2]
-        u = dx.ctrl
-        return 0.002 * jnp.sum(u ** 2) + 0.001 * pos_finger ** 2

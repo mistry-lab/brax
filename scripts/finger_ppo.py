@@ -19,9 +19,6 @@ from brax.envs.wrappers.training import DomainRandomizationVmapWrapper, AutoRese
 from brax.envs.fd import get_environment as get_fd_environment
 from brax.envs.fd.wrappers import get_terminal_reward_wrapper
 
-config.update('jax_default_matmul_precision', 'high')
-config.update("jax_enable_x64", True)
-
 def create_wandb_run(
         project: str,
         group: str,
@@ -97,6 +94,23 @@ def wrap_env_fn(
 
     return env
 
+def convert_omegaconf(param):
+    if OmegaConf.is_list(param):
+        return OmegaConf.to_object(param)
+    return param
+
+def get_network_kwargs(alg_cfg):
+    network_factory_path = importlib.import_module(alg_cfg.network_factory_path)
+    network_factory = getattr(network_factory_path, alg_cfg.make_network_fn_name)
+    network_kwargs = {
+        key:  convert_omegaconf(alg_cfg.network_factory_params[key]) \
+            for key in alg_cfg.network_factory_params}
+    network_factory = functools.partial(
+        network_factory,
+        **network_kwargs
+    )
+    return {"network_factory": network_factory}
+
 def get_command_line_args():
     parser = argparse.ArgumentParser(description='Script to train brax models.')    
     parser.add_argument('-r', '--regular', action='store_true', help='Use regular instead of FD environment.')
@@ -146,18 +160,13 @@ def train(cfg: DictConfig):
     param_dir = os.path.join(hydra_logdir, cfg.general.param_dir)
     os.makedirs(param_dir)
 
-    kwrd_args = {cfg.alg.checkpoint_keyword_arg: param_dir}
+    kwargs = {cfg.alg.checkpoint_keyword_arg: param_dir}
     if "network_factory_path" in cfg.alg:
-        network_factory_path = importlib.import_module(cfg.alg.network_factory_path)
-        network_factory = getattr(network_factory_path, cfg.alg.make_network_fn_name)
-        network_kwargs = {
-            key: OmegaConf.to_object(cfg.alg.network_factory_params[key]) \
-                for key in cfg.alg.network_factory_params}
-        network_factory = functools.partial(
-            network_factory,
-            **network_kwargs
-        )
-        kwrd_args["network_factory"] = network_factory
+        if cfg.env.dtype == "float64":
+            config.update('jax_default_matmul_precision', 'high')
+            config.update("jax_enable_x64", True)
+
+        kwargs.update(get_network_kwargs(cfg.alg))
 
     args = get_command_line_args()
     env = get_environment(cfg.env.name) if args.regular else get_fd_environment(cfg.env.name)
@@ -168,7 +177,7 @@ def train(cfg: DictConfig):
             if "terminal_reward_name" in cfg.env else None,
         progress_fn=functools.partial(progress, times, writer),
         seed=cfg.general.seed,
-        **kwrd_args
+        **kwargs
     )
 
     if not cfg.general.debug and not cfg.general.no_wandb:

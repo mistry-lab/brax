@@ -87,3 +87,10 @@ class NetworkFactory(Protocol[NetworkType]):
       preprocess_observations_fn: PreprocessObservationFn = identity_observation_preprocessor,
   ) -> NetworkType:
     pass
+
+class ValueTrainingSample(NamedTuple):
+  observation: NestedArray
+  reward: NestedArray
+  discount: NestedArray
+  next_observation: NestedArray
+  truncation: NestedArray

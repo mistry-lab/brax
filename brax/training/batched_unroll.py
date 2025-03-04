@@ -22,7 +22,8 @@ def generate_batched_unroll(
         unroll_length: int,
         number: int,
         reward_scaling: float,
-        extra_fields: Tuple[str] = ()
+        extra_fields: Tuple[str] = (),
+        **kwargs
     ):
 
     def f(carry, unused_t):
@@ -35,6 +36,7 @@ def generate_batched_unroll(
             unroll_length=unroll_length,
             extra_fields=extra_fields,
             include_time=True,
+            **kwargs
         )
 
         data = types.Transition(

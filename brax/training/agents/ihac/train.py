@@ -144,8 +144,9 @@ def train(
     # schedule parameters
     num_timesteps: int,
     max_devices_per_host: Optional[int] = None,
-    min_unroll_length: int = 10,  # horizon for short rollouts
-    max_unroll_length: int = 30,
+    start_unroll_length: int = 10,  # horizon for short rollouts
+    end_unroll_length: int = 30,
+    unroll_length_step: int = 1,
     batch_size: int = 32,
     num_minibatches: int = 4,
     num_updates_per_batch: int = 2,
@@ -192,7 +193,6 @@ def train(
     # sanity check parameters
     assert batch_size * num_minibatches  % num_envs == 0
 
-    assert min_unroll_length > 0
     assert num_timesteps >= 0
     assert actor_lr >= 0
     assert critic_lr >= 0
@@ -223,8 +223,10 @@ def train(
     device_count = local_devices_to_use * process_count
     assert num_envs % device_count == 0
 
-    num_unroll_lengths = max_unroll_length - min_unroll_length
-    mean_unroll_length = (max_unroll_length + min_unroll_length) // 2
+    unroll_lengths = range(start_unroll_length, end_unroll_length, unroll_length_step)
+
+    num_unroll_lengths = len(unroll_lengths)
+    mean_unroll_length = (start_unroll_length + end_unroll_length) // 2
 
     env_step_per_training_step = (
         mean_unroll_length * action_repeat * batch_size * num_minibatches
@@ -569,7 +571,9 @@ def train(
     training_metrics = {}
     training_walltime = 0
     current_step = 0
-    unroll_length = min_unroll_length
+
+    unroll_lengths = iter(unroll_lengths)
+    unroll_length = next(unroll_lengths)
     for it in range(num_evals_after_init):
         logging.info('starting iteration %s %s', it, time.time() - xt)
 
@@ -583,7 +587,7 @@ def train(
         )
 
         if it % num_constant_unroll_iterations:
-            unroll_length += 1
+            unroll_length += next(unroll_lengths)
 
         if process_id != 0:
             continue

@@ -1,0 +1,37 @@
+name: deterministic_apg
+network_config_filename: deterministic_apg_network_config.json
+module_path: brax.training.agents.deterministic_apg.train
+checkpoint_path: brax.training.agents.deterministic_apg.checkpoint
+checkpoint_keyword_arg: save_checkpoint_path
+
+network_factory_path: brax.training.agents.deterministic_apg.networks
+make_network_fn_name: make_apg_network
+
+params:
+  # schedule parameters
+  num_timesteps: ${env.config.num_timesteps}
+  batch_size: ${env.deterministic_apg.batch_size}
+
+  # environment wrapper
+  num_envs: ${env.deterministic_apg.num_envs}
+  episode_length: ${env.config.episode_length}
+  action_repeat: ${env.config.action_repeat}
+
+  # network parameters
+  grad_norm: ${env.config.actor_grad_norm}
+  learning_rate: ${env.deterministic_apg.learning_rate}
+  betas: ${env.config.betas}
+
+  # SHAC params
+  discounting: ${env.config.discounting}
+  normalize_observations: ${env.config.normalize_observations}
+  reward_scaling: ${env.config.reward_scaling}
+
+  # eval
+  num_evals: ${env.config.num_evals}
+  num_eval_envs: ${env.deterministic_apg.num_envs}
+  deterministic_eval:  ${env.config.deterministic_eval}
+
+network_factory_params:
+  hidden_layer_sizes: ${env.config.policy_hidden_layer_sizes}
+  dtype: ${env.dtype}

@@ -1,10 +1,9 @@
-name: finger
-terminal_reward_name: finger
-dtype: float64
+name: pusher
+dtype: float32
 
 config:
   # schedule parameters
-  num_timesteps: 5_000_000
+  num_timesteps: 1_000_000
 
   # environment wrapper
   episode_length: 75
@@ -25,7 +24,7 @@ config:
   reward_scaling: 1
 
   # eval
-  num_evals: 20
+  num_evals: 30
   deterministic_eval: True
 
 ppo:

@@ -7,21 +7,24 @@ checkpoint_keyword_arg: save_checkpoint_path
 params:
   num_timesteps: ${env.config.num_timesteps}
 
-  num_envs: ${env.config.num_envs}
+  num_envs: ${env.ppo.num_envs}
   episode_length: ${env.config.episode_length}
   action_repeat: ${env.config.action_repeat}
 
   learning_rate: ${env.ppo.learning_rate}
   entropy_cost: 1e-2
   discounting: ${env.config.discounting} 
-  unroll_length: ${env.config.unroll_length}
-  batch_size: ${env.config.batch_size}
-  num_minibatches: ${env.config.num_minibatches}
-  num_updates_per_batch: ${env.config.num_updates_per_batch}
+  unroll_length: ${env.ppo.unroll_length}
+  batch_size: ${env.ppo.batch_size}
+  num_minibatches: ${env.ppo.num_minibatches}
+  num_updates_per_batch: ${env.ppo.num_updates_per_batch}
 
   normalize_observations: ${env.config.normalize_observations}
   reward_scaling: ${env.config.reward_scaling}
 
   num_evals: ${env.config.num_evals}
-  num_eval_envs: ${env.config.num_eval_envs}
+  num_eval_envs: ${env.ppo.num_envs}
   deterministic_eval: ${env.config.deterministic_eval}
+
+network_factory_params:
+  dtype: ${env.dtype}

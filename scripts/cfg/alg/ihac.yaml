@@ -1,30 +1,32 @@
-name: diffrl_shac
-network_config_filename: diffrl_shac_network_config.json
-module_path: brax.training.agents.diffrl_shac.train
-checkpoint_path: brax.training.agents.diffrl_shac.checkpoint
+name: ihac
+network_config_filename: ihac_network_config.json
+module_path: brax.training.agents.ihac.train
+checkpoint_path: brax.training.agents.ihac.checkpoint
 checkpoint_keyword_arg: save_checkpoint_path
 
-network_factory_path: brax.training.agents.diffrl_shac.networks
-make_network_fn_name: make_shac_networks
+network_factory_path: brax.training.agents.ihac.networks
+make_network_fn_name: make_ihac_networks
 
 params:
   # schedule parameters
   num_timesteps: ${env.config.num_timesteps}
-  unroll_length: ${env.diffrl_shac.unroll_length}
-  batch_size: ${env.diffrl_shac.batch_size}
-  num_minibatches: ${env.diffrl_shac.num_minibatches}
-  num_updates_per_batch: ${env.diffrl_shac.num_updates_per_batch}
+  start_unroll_length: ${env.ihac.start_unroll_length}
+  end_unroll_length: ${env.ihac.end_unroll_length}
+  unroll_length_step: ${env.ihac.unroll_length_step}
+  batch_size: ${env.ihac.batch_size}
+  num_minibatches: ${env.ihac.num_minibatches}
+  num_updates_per_batch: ${env.ihac.num_updates_per_batch}
 
   # environment wrapper
-  num_envs: ${env.diffrl_shac.num_envs}
+  num_envs: ${env.ihac.num_envs}
   episode_length: ${env.config.episode_length}
   action_repeat: ${env.config.action_repeat}
 
   # network parameters
   actor_grad_norm: ${env.config.actor_grad_norm}
   critic_grad_norm: ${env.config.critic_grad_norm}
-  actor_lr: ${env.diffrl_shac.actor_lr}
-  critic_lr: ${env.diffrl_shac.critic_lr}
+  actor_lr: ${env.ihac.actor_lr}
+  critic_lr: ${env.ihac.critic_lr}
   tau: ${env.config.tau}
   betas: ${env.config.betas}
 
@@ -35,7 +37,7 @@ params:
 
   # eval
   num_evals: ${env.config.num_evals}
-  num_eval_envs: ${env.diffrl_shac.num_envs}
+  num_eval_envs: ${env.ihac.num_envs}
   deterministic_eval:  ${env.config.deterministic_eval}
 
 network_factory_params:

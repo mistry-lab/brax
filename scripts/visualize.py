@@ -16,6 +16,7 @@ import mujoco
 from mujoco import viewer
 
 import jax
+import jax.numpy as jnp
 from brax.envs.fd import get_environment
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -26,11 +27,13 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 config_dir = os.path.join(script_dir, "remote_cfg")
 param_dir = os.path.join(script_dir, "params")
 
-def get_most_recent_parameters_path(address: str, username: str, password: str):
+def get_most_recent_parameters_path(address: str, username: str, password: str, path: str = None):
     client = SSHClient()
     client.load_system_host_keys()
     client.connect(address, username=username, password=password)
-    stdin, stdout, stderr = client.exec_command('./brax/brax/scripts/newest_train_parameters.sh')
+    command = f'./brax/brax/scripts/newest_train_parameters.sh' if path is None else \
+        f'./brax/brax/scripts/newest_train_parameters.sh {path}'
+    stdin, stdout, stderr = client.exec_command(command)
     return pathlib.Path(stdout.read().strip().decode("utf-8"))
 
 def get_config(address: str, remote_training_dir: str, output_filename: str, password: str | None):
@@ -91,10 +94,11 @@ def generate_trajectory(env_reset, env_step, inference_fn, seed):
     seed = 0 if seed is None else int(seed)
     rng = jax.random.PRNGKey(seed=seed)
     state = env_reset(rng=rng)
-    for _ in range(1000):
+    for i in range(1000):
         rollout.append(state.pipeline_state)
         act_rng, rng = jax.random.split(rng)
-        act, _ = inference_fn(state.obs, act_rng)
+        act, _ = inference_fn(state.obs, act_rng, jnp.array([i]))
+        logging.info(f"Action is {act}")
         state = env_step(state, act)
 
     return rollout
@@ -109,6 +113,10 @@ def get_command_line_args():
     parser.add_argument('-c','--config-path', help='Path to training configuration.')
     
     parser.add_argument('-s', '--seed', help='Seed used to initialize the environment.')
+    parser.add_argument('-d', '--deterministic', action='store_true', help='Use a determinstic policy.')
+
+    parser.add_argument('--date', help='Date of run to get config and parameters for.')
+    parser.add_argument('--time', help='Time of run to get config and parameters for.')
 
     args = parser.parse_args()
 
@@ -130,9 +138,14 @@ def main():
         path = get_most_recent_parameters_path(address, username, args.password)
 
         train_dir = path.parents[1]
-        isotime = f"{train_dir.parents[0].name}T{train_dir.name}"
+        isotime = f"{args.date}T{args.time}" if args.date and args.time else \
+            f"{train_dir.parents[0].name}T{train_dir.name}"
         logging.info(f"Loading training run in {isotime}")
-        
+
+        if args.date and args.time:
+            train_dir = path.parents[3] / args.date / args.time
+            path = get_most_recent_parameters_path(address, username, args.password, train_dir)
+
         config_path = get_config(address, train_dir, isotime, args.password)
 
         with open(config_path, "r") as f:
@@ -167,7 +180,7 @@ def main():
     jit_env_reset = jax.jit(env.reset)
 
     load_policy = getattr(checkpoint, "load_policy")
-    inference_fn = load_policy(path=policy_parameters_path)
+    inference_fn = load_policy(path=policy_parameters_path, deterministic=args.deterministic)
 
     jit_env_step = jax.jit(env.step)
     jit_inference_fn = jax.jit(inference_fn)

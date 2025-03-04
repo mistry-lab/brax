@@ -4,7 +4,7 @@ dtype: float64
 
 config:
   # schedule parameters
-  num_timesteps: 5_000_000
+  num_timesteps: 20_000_000
 
   # environment wrapper
   episode_length: 75
@@ -23,6 +23,7 @@ config:
   discounting: 1.0
   normalize_observations: True
   reward_scaling: 1
+  gae_lambda: 0.95
 
   # eval
   num_evals: 20

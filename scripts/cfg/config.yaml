@@ -9,9 +9,10 @@ general:
   seed: 42
   debug: false
   no_wandb: true
+  regular_env: false
 
 wandb:
-  project: fd_brax
+  project: sweep
   entity: mistry-lab
   group: ${alg.name}
   resume: False

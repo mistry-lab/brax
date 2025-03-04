@@ -26,10 +26,10 @@ def create_wandb_run(
         alg_name: str,
         env_name: str,
         seed: int,
-        notes: str | None,
         job_config: dict, 
         run_id: str,
-        resume: bool = False
+        resume: bool = False,
+        **kwargs
     ):
 
     name = f"{alg_name}_{env_name}_sweep_{seed}"
@@ -43,9 +43,9 @@ def create_wandb_run(
         monitor_gym=True,
         save_code=True,
         name=name,
-        notes=notes,
         id=run_id,
         resume=resume,
+        **kwargs
     )
 
 def get_time_from_path(path: str):
@@ -60,12 +60,20 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
     times.append(datetime.now())
 
     log_scalar = lambda key, value: writer.add_scalar(f"{key}", value, num_steps)
-    for reward in ["reward"]:
-      log_scalar(f"eval/episode_{reward}", metrics[f"eval/episode_{reward}"].item())
-      log_scalar(f"eval/episode_{reward}_std", metrics[f"eval/episode_{reward}_std"].item())
-    log_scalar(f"eval/avg_episode_length", metrics[f"eval/avg_episode_length"].item())
-    log_scalar(f"eval/epoch_eval_time", metrics[f"eval/epoch_eval_time"])
+    for key, value in \
+            ((key, value) for key, value in metrics.items() if key.startswith("eval/episode")):
+        log_scalar(key, value.item())
+
+    if "training/sps" in metrics:
+        log_scalar(f"training/walltime", metrics[f"training/walltime"])
+        log_scalar(f"training/sps", metrics[f"training/sps"])
+
+    log_scalar(f"eval/walltime", metrics[f"eval/walltime"])
     log_scalar(f"eval/sps", metrics[f"eval/sps"])
+
+    log_scalar(f"eval/avg_episode_length", metrics[f"eval/avg_episode_length"].item())
+    log_scalar(f"eval/std_episode_length", metrics[f"eval/std_episode_length"].item())
+    log_scalar(f"eval/epoch_eval_time", metrics[f"eval/epoch_eval_time"])
 
     writer.flush()
 
@@ -111,16 +119,29 @@ def get_network_kwargs(alg_cfg):
     )
     return {"network_factory": network_factory}
 
-def get_command_line_args():
-    parser = argparse.ArgumentParser(description='Script to train brax models.')    
-    parser.add_argument('-r', '--regular', action='store_true', help='Use regular instead of FD environment.')
-
-    args = parser.parse_args()
-    return args
-
-@hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
-def train(cfg: DictConfig):
+def train_with_cfg(cfg: DictConfig):
     hydra_logdir = HydraConfig.get()["runtime"]["output_dir"]
+
+    if not cfg.general.debug and not cfg.general.no_wandb:    
+        kwargs = {} if "sweep" in cfg.general else \
+            {
+                "notes": cfg.wandb.notes,
+            }
+
+        create_wandb_run(
+            project=cfg.wandb.project,
+            group=cfg.wandb.group,
+            entity=cfg.wandb.entity,
+            alg_name=cfg.alg.name,
+            env_name=cfg.env.name,
+            seed=cfg.general.seed,
+            job_config=OmegaConf.to_container(cfg, resolve=True),
+            run_id=get_time_from_path(hydra_logdir),
+            resume=cfg.wandb.resume,
+            **kwargs
+        )
+
+        cfg = OmegaConf.merge(cfg, dict(wandb.config))
 
     param_copy_dir = os.path.join(hydra_logdir, "resolved_config.yaml")
     OmegaConf.save(cfg, param_copy_dir, resolve=True)
@@ -132,22 +153,6 @@ def train(cfg: DictConfig):
         cfg.alg.params.batch_size = 1
 
         os.environ["CUDA_VISIBLE_DEVICES"]="3"
-
-    cfg_full = OmegaConf.to_container(cfg, resolve=True)
-
-    if not cfg.general.debug and not cfg.general.no_wandb:
-        create_wandb_run(
-            project=cfg.wandb.project,
-            group=cfg.wandb.group,
-            entity=cfg.wandb.entity,
-            alg_name=cfg.alg.name,
-            env_name=cfg.env.name,
-            seed=cfg.general.seed,
-            notes=cfg.wandb.notes,
-            job_config=cfg_full,
-            run_id=get_time_from_path(hydra_logdir),
-            resume=cfg.wandb.resume
-        )
 
     logdir = os.path.join(hydra_logdir, cfg.general.logdir)
     writer = SummaryWriter(logdir)
@@ -168,9 +173,10 @@ def train(cfg: DictConfig):
 
         kwargs.update(get_network_kwargs(cfg.alg))
 
-    args = get_command_line_args()
-    env = get_environment(cfg.env.name) if args.regular else get_fd_environment(cfg.env.name)
-    make_inference_fn, params, _ = algorithm_train(
+    env = get_environment(cfg.env.name) if cfg.general.regular_env \
+        else get_fd_environment(cfg.env.name)
+
+    make_inference_fn, params, metrics = algorithm_train(
         **cfg.alg.params,
         environment=env,
         wrap_env_fn=functools.partial(wrap_env_fn, terminal_reward_name=cfg.env.terminal_reward_name) \
@@ -182,6 +188,12 @@ def train(cfg: DictConfig):
 
     if not cfg.general.debug and not cfg.general.no_wandb:
         wandb.finish()
+
+    return make_inference_fn, params, metrics
+
+@hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
+def train(cfg: DictConfig):
+    train_with_cfg(cfg)
 
 if __name__=='__main__':
     train()

@@ -32,6 +32,7 @@ params:
   discounting: ${env.config.discounting}
   normalize_observations: ${env.config.normalize_observations}
   reward_scaling: ${env.config.reward_scaling}
+  gae_lambda: ${env.config.gae_lambda}
 
   # eval
   num_evals: ${env.config.num_evals}

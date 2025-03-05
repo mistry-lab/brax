@@ -1,3 +1,4 @@
+import shutil
 import wandb
 import hydra
 
@@ -16,9 +17,9 @@ sweep_configuration = {
                         "critic_lr": {
                             "values": [2e-4, 5e-4, 1e-3, 2e-3]
                         },
-                        "tau": {
-                            "values": [0.2, 0.995]
-                        },
+                        # "tau": {
+                        #     "values": [0.2, 0.995]
+                        # },
                     }
                 },
                 "network_factory_params": {
@@ -45,13 +46,15 @@ sweep_configuration = {
     },
 }
 
-@hydra.main(config_path="cfg", config_name="config.yaml", version_base="1.2")
+@hydra.main(config_path="sweep_cfg", config_name="config.yaml", version_base="1.2")
 def train(cfg: DictConfig):
     OmegaConf.update(cfg, "general.sweep", True, force_add=True)
     OmegaConf.update(cfg, "general.no_wandb", False)
     train_with_cfg(cfg)
 
 def main():
+    shutil.copytree("cfg", "sweep_cfg", dirs_exist_ok=True)
+
     sweep_id = wandb.sweep(sweep=sweep_configuration, project="my-first-sweep")
     wandb.agent(sweep_id, function=train, count=10)
 

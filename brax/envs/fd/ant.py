@@ -23,7 +23,6 @@ from brax.io import mjcf
 from etils import epath
 import jax
 from jax import numpy as jp
-import mujoco
 
 
 class Ant(FDEnv):
@@ -156,38 +155,8 @@ class Ant(FDEnv):
       contact_force_range=(-1.0, 1.0),
       reset_noise_scale=0.1,
       exclude_current_positions_from_observation=True,
-      backend='generalized',
       **kwargs,
   ):
-    path = epath.resource_path('brax') / 'envs/assets/fd/ant.xml'
-    sys = mjcf.load(path)
-
-    n_frames = 5
-
-    if backend in ['spring', 'positional']:
-      sys = sys.tree_replace({'opt.timestep': 0.005})
-      n_frames = 10
-
-    if backend == 'mjx':
-      sys = sys.tree_replace({
-          'opt.solver': mujoco.mjtSolver.mjSOL_NEWTON,
-          'opt.disableflags': mujoco.mjtDisableBit.mjDSBL_EULERDAMP,
-          'opt.iterations': 1,
-          'opt.ls_iterations': 4,
-      })
-
-    if backend == 'positional':
-      # TODO: does the same actuator strength work as in spring
-      sys = sys.replace(
-          actuator=sys.actuator.replace(
-              gear=200 * jp.ones_like(sys.actuator.gear)
-          )
-      )
-
-    kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
-
-    super().__init__(sys=sys, backend=backend, **kwargs)
-
     self._ctrl_cost_weight = ctrl_cost_weight
     self._use_contact_forces = use_contact_forces
     self._contact_cost_weight = contact_cost_weight
@@ -200,8 +169,9 @@ class Ant(FDEnv):
         exclude_current_positions_from_observation
     )
 
-    if self._use_contact_forces:
-      raise NotImplementedError('use_contact_forces not implemented.')
+    path = epath.resource_path('brax') / 'envs/assets/fd/ant.xml'
+    sys = mjcf.load(path)
+    super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl", "sensordata"}, **kwargs)
 
   def reset(self, rng: jax.Array) -> State:
     """Resets the environment to an initial state."""
@@ -231,13 +201,13 @@ class Ant(FDEnv):
     }
     return State(pipeline_state, obs, reward, done, metrics)
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, analytic: bool = False) -> State:
     """Run one timestep of the environment's dynamics."""
     pipeline_state0 = state.pipeline_state
     assert pipeline_state0 is not None
-    pipeline_state = self.pipeline_step(pipeline_state0, action)
+    pipeline_state = self.step_fn(state.pipeline_state, action)
 
-    velocity = (pipeline_state.x.pos[0] - pipeline_state0.x.pos[0]) / self.dt
+    velocity = (pipeline_state.x.pos[0] - pipeline_state0.x.pos[0]) / self.sys.opt.timestep
     forward_reward = velocity[0]
 
     min_z, max_z = self._healthy_z_range

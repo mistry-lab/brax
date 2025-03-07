@@ -69,6 +69,7 @@ def load_policy(
         diffrl_shac_networks.DiffRLSHACNetworks
     ] = diffrl_shac_networks.make_shac_networks,
     deterministic: bool = True,
+    include_time: bool = False,
 ):
   """Loads policy inference function from SHAC checkpoint."""
   path = epath.Path(path)
@@ -81,6 +82,6 @@ def load_policy(
 
   params = load(path)
   shac_network = _get_diffrl_shac_network(config, network_factory)
-  make_inference_fn = diffrl_shac_networks.make_inference_fn(shac_network)
+  make_inference_fn = diffrl_shac_networks.make_inference_fn(shac_network, include_time)
 
   return make_inference_fn(params, deterministic=deterministic)

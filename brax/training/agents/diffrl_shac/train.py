@@ -11,6 +11,7 @@ from brax.v1 import envs as envs_v1
 from brax.training.agents.diffrl_shac import checkpoint
 from brax.training.agents.diffrl_shac import losses as shac_losses
 from brax.training.agents.diffrl_shac import networks as shac_networks
+from brax.training.optimizer import get_optimizer
 
 from absl import logging
 
@@ -141,6 +142,7 @@ def _maybe_wrap_env(
 
 def train(
     environment: envs.Env,
+    include_time: bool,
     # schedule parameters
     num_timesteps: int,
     max_devices_per_host: Optional[int] = None,
@@ -262,29 +264,31 @@ def train(
         normalize = running_statistics.normalize
 
     shac_network = network_factory(
-        environment.observation_size,
+        environment.observation_size + 1 if include_time else environment.observation_size,
         environment.action_size,
         preprocess_observations_fn=normalize)
-    make_policy = shac_networks.make_inference_fn(shac_network)
+    make_policy = shac_networks.make_inference_fn(shac_network, include_time)
 
     # initialize optimizers
-    policy_optimizer = optax.adam(learning_rate=actor_lr, b1=betas[0], b2=betas[1])
-    if actor_grad_norm is not None:
-        policy_optimizer = optax.chain(
-            optax.clip_by_global_norm(actor_grad_norm),
-            optax.adam(learning_rate=actor_lr, b1=betas[0], b2=betas[1])
-        )
+    policy_optimizer = get_optimizer(
+        schedule=lr_schedule,
+        learning_rate=actor_lr,
+        grad_norm=actor_grad_norm,
+        betas=betas,
+        number_epochs=num_evals_after_init,
+    )
 
-    value_optimizer = optax.adam(learning_rate=critic_lr, b1=betas[0], b2=betas[1])
-    if critic_grad_norm is not None:
-        value_optimizer = optax.chain(
-            optax.clip_by_global_norm(critic_grad_norm),
-            optax.adam(learning_rate=critic_lr, b1=betas[0], b2=betas[1]),
-        )
+    value_optimizer = get_optimizer(
+        schedule="constant",
+        learning_rate=critic_lr,
+        grad_norm=critic_grad_norm,
+        betas=betas,
+    )
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
         env=env,
+        include_time=include_time,
         discounting=discounting,
         reward_scaling=reward_scaling,
         gae_lambda=gae_lambda,
@@ -353,7 +357,8 @@ def train(
             reward=data.reward,
             discount=data.discount,
             next_observation=data.next_observation,
-            truncation=data.extras['state_extras']['truncation']
+            truncation=data.extras['state_extras']['truncation'],
+            steps=data.extras['state_extras']['steps']
         )
 
         shuffled_data = jax.tree_util.tree_map(convert_data, data)

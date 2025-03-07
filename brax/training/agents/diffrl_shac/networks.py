@@ -15,7 +15,9 @@ class DiffRLSHACNetworks:
     value_network: networks.FeedForwardNetwork
     parametric_action_distribution: distribution.ParametricDistribution
 
-def make_inference_fn(shac_networks: DiffRLSHACNetworks):
+def make_inference_fn(
+    shac_networks: DiffRLSHACNetworks,
+    include_time: bool):
   """Creates params and inference function for the SHAC agent."""
 
   def make_policy(
@@ -25,7 +27,8 @@ def make_inference_fn(shac_networks: DiffRLSHACNetworks):
     def policy(
         observations: types.Observation, key_sample: PRNGKey, step: int
     ) -> Tuple[types.Action, types.Extra]:
-      logits = shac_networks.policy_network.apply(*params, observations, step)
+      logits = shac_networks.policy_network.apply(*params, observations, step) if include_time \
+        else shac_networks.policy_network.apply(*params, observations)
       if deterministic:
         return shac_networks.parametric_action_distribution.mode(logits), {}
       return (

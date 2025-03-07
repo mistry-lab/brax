@@ -74,6 +74,7 @@ def compute_td_value(
 def make_losses(
     shac_network: shac_networks.DiffRLSHACNetworks,
     env: envs.Env,
+    include_time: bool,
     discounting: float,
     reward_scaling: float,
     gae_lambda: float,
@@ -81,7 +82,7 @@ def make_losses(
     number: int
 ):
     value_apply = shac_network.value_network.apply
-    make_policy = shac_networks.make_inference_fn(shac_network)
+    make_policy = shac_networks.make_inference_fn(shac_network, include_time)
 
     """Creates the SHAC losses."""
     def critic_loss(
@@ -92,9 +93,35 @@ def make_losses(
         # Put the time dimension first.
         data = jax.tree_util.tree_map(lambda x: jnp.swapaxes(x, 0, 1), data)
 
-        baseline = value_apply(normalizer_params, value_params, data.observation)
+        baseline = value_apply(
+            normalizer_params,
+            value_params,
+            data.observation,
+            jnp.expand_dims(data.steps, axis=-1)
+        ) if include_time \
+        else value_apply(
+            normalizer_params,
+            value_params,
+            data.observation,
+        )
+
         terminal_obs = jax.tree_util.tree_map(lambda x: x[-1], data.next_observation)
-        bootstrap_value = value_apply(normalizer_params, value_params, terminal_obs)
+        
+        if include_time:
+            terminal_steps = jax.tree_util.tree_map(lambda x: x[-1], data.steps)
+
+            bootstrap_value = value_apply(
+                normalizer_params,
+                value_params,
+                terminal_obs,
+                jnp.expand_dims(terminal_steps, axis=-1)
+            )
+        else:
+            bootstrap_value = value_apply(
+                normalizer_params,
+                value_params,
+                terminal_obs
+            )
 
         termination = (1 - data.discount) * (1 - data.truncation)
 
@@ -131,16 +158,41 @@ def make_losses(
             unroll_length=unroll_length,
             number=number,
             reward_scaling=reward_scaling,
-            extra_fields=('truncation', 'episode_metrics', 'episode_done'),
+            extra_fields=('truncation', 'episode_metrics', 'episode_done', 'steps'),
         )
         # Put the time dimension first.
         ordered_data = jax.tree_util.tree_map(lambda x: jnp.swapaxes(x, 0, 1), data)
 
         truncation = ordered_data.extras['state_extras']['truncation']
 
-        values = value_apply(normalizer_params, value_params, ordered_data.observation)
+        values = value_apply(
+            normalizer_params,
+            value_params,
+            ordered_data.observation,
+            jnp.expand_dims(ordered_data.extras['state_extras']['steps'], axis=-1)
+        ) if include_time \
+        else value_apply(
+            normalizer_params,
+            value_params,
+            ordered_data.observation
+        )
+
         terminal_obs = jax.tree_util.tree_map(lambda x: x[-1], ordered_data.next_observation)
-        bootstrap_value = value_apply(normalizer_params, value_params, terminal_obs)
+        if include_time:
+            terminal_steps = jax.tree_util.tree_map(lambda x: x[-1], data.steps)
+
+            bootstrap_value = value_apply(
+                normalizer_params,
+                value_params,
+                terminal_obs,
+                jnp.expand_dims(terminal_steps, axis=-1)
+            )
+        else:
+            bootstrap_value = value_apply(
+                normalizer_params,
+                value_params,
+                terminal_obs
+            )
 
         termination = (1 - ordered_data.discount) * (1 - truncation)
 

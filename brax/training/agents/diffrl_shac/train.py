@@ -267,7 +267,7 @@ def train(
         environment.observation_size + 1 if include_time else environment.observation_size,
         environment.action_size,
         preprocess_observations_fn=normalize)
-    make_policy = shac_networks.make_inference_fn(shac_network, include_time)
+    make_policy = shac_networks.make_inference_fn(shac_network)
 
     # initialize optimizers
     policy_optimizer = get_optimizer(

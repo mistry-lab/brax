@@ -82,7 +82,7 @@ def make_losses(
     number: int
 ):
     value_apply = shac_network.value_network.apply
-    make_policy = shac_networks.make_inference_fn(shac_network, include_time)
+    make_policy = shac_networks.make_inference_fn(shac_network)
 
     """Creates the SHAC losses."""
     def critic_loss(

@@ -61,6 +61,7 @@ def compute_apg_loss(
     rng: jnp.ndarray,
     apg_network: apg_networks.UnrollAPGNetworks,
     env: envs.Env,
+    include_time: bool,
     episode_length: int,
     number: int,
     entropy_cost: float,
@@ -80,7 +81,7 @@ def compute_apg_loss(
             current_key,
             episode_length,
             extra_fields=('truncation', 'episode_metrics', 'episode_done', 'steps'),
-            include_time=True,
+            include_time=include_time,
         )
         return (next_state, next_key), data
 
@@ -110,7 +111,13 @@ def compute_apg_loss(
         params,
         ordered_data.observation,
         jnp.expand_dims(ordered_data.extras['state_extras']['steps'], axis=-1),
+    ) if include_time \
+    else apg_network.policy_network.apply(
+        normalizer_params,
+        params,
+        ordered_data.observation
     )
+
     entropy = jnp.mean(apg_network.parametric_action_distribution.entropy(policy_logits, rng))
     entropy_loss = entropy_cost * -entropy
 

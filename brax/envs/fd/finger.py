@@ -1,7 +1,5 @@
 from brax.envs.fd.fd_env import FDEnv
 
-from mujoco import mjx
-
 from etils import epath
 
 import jax
@@ -26,7 +24,6 @@ class Finger(FDEnv):
         Returns:
             A JAX array of shape (4,) representing the quaternion [w, x, y, z].
         """
-        a0, a1, a2 = angle_axis
         theta = jnp.linalg.norm(angle_axis)
 
         def not_zero(theta, angle_axis):

@@ -1,4 +1,4 @@
-from brax.envs.fd import finger, linear, inverted_pendulum, pusher, shadow_hand, ant
+from brax.envs.fd import finger, linear, inverted_pendulum, pusher, shadow_hand, ant, hopper, reacher, half_cheetah
 from brax.envs.fd.fd_env import FDEnv
 
 _envs = {
@@ -8,6 +8,9 @@ _envs = {
     'pusher': pusher.Pusher,
     'shadow_hand': shadow_hand.ShadowHand,
     'ant': ant.Ant,
+    'hopper': hopper.Hopper,
+    'reacher': reacher.Reacher,
+    'half_cheetah': half_cheetah.Halfcheetah,
 }
 
 def get_environment(env_name: str, **kwargs) -> FDEnv:

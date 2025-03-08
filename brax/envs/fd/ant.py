@@ -171,7 +171,7 @@ class Ant(FDEnv):
 
     path = epath.resource_path('brax') / 'envs/assets/fd/ant.xml'
     sys = mjcf.load(path)
-    super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl", "sensordata"}, **kwargs)
+    super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
   def reset(self, rng: jax.Array) -> State:
     """Resets the environment to an initial state."""

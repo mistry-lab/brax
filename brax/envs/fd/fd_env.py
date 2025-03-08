@@ -5,7 +5,9 @@ from typing import Optional, Set
 
 import jax
 
-from brax.fd.pipeline import build_fd_cache, make_step_fn, init, make_upscaled_data
+import brax.fd.pipeline as fd_pipeline
+import brax.quat_fd.pipeline as quat_fd_pipeline
+
 from brax.fd.base import State
 from brax.base import System
 from brax import base
@@ -15,15 +17,15 @@ from typing import Mapping, Tuple, Union
 ObservationSize = Union[int, Mapping[str, Union[Tuple[int, ...], int]]]
 
 class FDEnv(Env):
-    def __init__(self, sys: System, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, upscale=False):
+    def __init__(self, sys: System, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, quat: bool = False):
         self.sys = sys
         self.mx = mjx.put_model(self.sys.mj_model)
-        dx = make_upscaled_data(self.mx)
+        dx = fd_pipeline.make_upscaled_data(self.mx)
 
-        self.dx = init(self.sys, dx.qpos, dx.qvel)
+        self.dx = fd_pipeline.init(self.sys, dx.qpos, dx.qvel)
 
-        fd_cache = build_fd_cache(self.dx, target_fields, eps)
-        self.step_fn = make_step_fn(self.sys, self.set_control, fd_cache)
+        fd_cache = fd_pipeline.build_fd_cache(self.dx, target_fields, eps)
+        self.step_fn = fd_pipeline.make_step_fn(self.sys, self.set_control, fd_cache)
 
     def set_control(self, dx: State, u):
         return dx.replace(ctrl=dx.ctrl.at[:].set(u))
@@ -46,4 +48,4 @@ class FDEnv(Env):
         return jax.tree_util.tree_map(lambda x: x.shape, obs)
 
     def pipeline_init(self, qpos_init: jax.Array, qvel_init: jax.Array) -> mjx.Data:
-        return init(self.sys, qpos_init, qvel_init)
+        return fd_pipeline.init(self.sys, qpos_init, qvel_init)

@@ -236,9 +236,11 @@ def make_value_network(
       dtype=dtype,
   )
 
-  def apply(processor_params, value_params, obs):
+  def apply(processor_params, value_params, obs, step=None):
     obs = preprocess_observations_fn(obs, processor_params)
     obs = obs if isinstance(obs, jax.Array) else obs[obs_key]
+    if step is not None:
+      obs = jnp.concatenate((obs, step), axis=-1)
     return jnp.squeeze(value_module.apply(value_params, obs), axis=-1)
 
   obs_size = _get_obs_state_size(obs_size, obs_key)

@@ -23,6 +23,7 @@ def generate_batched_unroll(
         number: int,
         reward_scaling: float,
         extra_fields: Tuple[str] = (),
+        include_time: bool = False,
         **kwargs
     ):
 
@@ -35,7 +36,7 @@ def generate_batched_unroll(
             key=key,
             unroll_length=unroll_length,
             extra_fields=extra_fields,
-            include_time=True,
+            include_time=include_time,
             **kwargs
         )
 

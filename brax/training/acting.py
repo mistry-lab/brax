@@ -38,15 +38,14 @@ def actor_step(
     policy: Policy,
     key: PRNGKey,
     extra_fields: Sequence[str] = (),
-    **kwargs
+    include_time: bool = False,
+    env_flag: bool = False,
 ) -> Tuple[State, Transition]:
   """Collect data."""
-  include_time = kwargs.get("include_time", False)
-
   step = jnp.expand_dims(env_state.info["steps"], axis=1)
   actions, policy_extras = policy(env_state.obs, key, step) if \
     include_time else policy(env_state.obs, key)
-  nstate = env.step(env_state, actions, **kwargs)
+  nstate = env.step(env_state, actions, flag=env_flag)
   state_extras = {x: nstate.info[x] for x in extra_fields}
   return nstate, Transition(  # pytype: disable=wrong-arg-types  # jax-ndarray
       observation=env_state.obs,
@@ -65,7 +64,8 @@ def generate_unroll(
     key: PRNGKey,
     unroll_length: int,
     extra_fields: Sequence[str] = (),
-    **kwargs
+    include_time: bool = False,
+    env_flag: bool = False,
 ) -> Tuple[State, Transition]:
   """Collect trajectories of given unroll_length."""
 
@@ -74,7 +74,13 @@ def generate_unroll(
     state, current_key = carry
     current_key, next_key = jax.random.split(current_key)
     nstate, transition = actor_step(
-        env, state, policy, current_key, extra_fields=extra_fields, **kwargs
+        env,
+        state,
+        policy,
+        current_key,
+        extra_fields=extra_fields,
+        include_time=include_time,
+        env_flag=env_flag,
     )
     return (nstate, next_key), transition
 
@@ -96,7 +102,8 @@ class Evaluator:
       episode_length: int,
       action_repeat: int,
       key: PRNGKey,
-      include_time: bool = False
+      include_time: bool = False,
+      env_flag: bool = False,
   ):
     """Init.
 
@@ -117,7 +124,7 @@ class Evaluator:
         policy_params: PolicyParams, key: PRNGKey
     ) -> State:
       reset_keys = jax.random.split(key, num_eval_envs)
-      eval_first_state = eval_env.reset(reset_keys)
+      eval_first_state = eval_env.reset(reset_keys, flag=env_flag)
       return generate_unroll(
           eval_env,
           eval_first_state,
@@ -125,6 +132,7 @@ class Evaluator:
           key,
           unroll_length=episode_length // action_repeat,
           include_time=include_time,
+          env_flag=env_flag,
       )[0]
 
     self._generate_eval_unroll = jax.jit(generate_eval_unroll)

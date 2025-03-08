@@ -94,3 +94,4 @@ class ValueTrainingSample(NamedTuple):
   discount: NestedArray
   next_observation: NestedArray
   truncation: NestedArray
+  steps: NestedArray

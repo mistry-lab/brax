@@ -17,9 +17,10 @@ config:
   # network parameters
   actor_grad_norm: 1.0
   critic_grad_norm: 1.0
+  lr_schedule: linear
   policy_hidden_layer_sizes: [128, 256, 128]
   value_hidden_layer_sizes: [128, 256, 128]
-  tau: 0.2
+  tau: 0.8
   betas: [0.7, 0.95]
 
   # SHAC params
@@ -33,6 +34,16 @@ config:
   num_evals: 20
   num_eval_envs: 2048
   deterministic_eval: True
+
+sac:
+  batch_size: 512
+  grad_updates_per_step: 64
+  num_envs: 128
+
+  max_replay_size: 1048576
+  min_replay_size: 8192
+
+  learning_rate: 6e-4
 
 ppo:
   unroll_length: 10

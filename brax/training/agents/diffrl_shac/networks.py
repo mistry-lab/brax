@@ -8,6 +8,8 @@ import flax
 from flax import linen
 from flax.typing import Dtype
 
+import jax.numpy as jnp
+
 
 @flax.struct.dataclass
 class DiffRLSHACNetworks:
@@ -28,14 +30,7 @@ def make_inference_fn(
     ) -> Tuple[types.Action, types.Extra]:
       logits = shac_networks.policy_network.apply(*params, observations, step) if step is not None \
         else shac_networks.policy_network.apply(*params, observations)
-      if deterministic:
-        return shac_networks.parametric_action_distribution.mode(logits), {}
-      return (
-          shac_networks.parametric_action_distribution.sample(
-              logits, key_sample
-          ),
-          {},
-      )
+      return jnp.tanh(logits), {}
 
     return policy
 
@@ -57,7 +52,7 @@ def make_shac_networks(
       event_size=action_size
   )
   policy_network = networks.make_policy_network(
-      parametric_action_distribution.param_size,
+      action_size,
       observation_size,
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=policy_hidden_layer_sizes,

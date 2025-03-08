@@ -170,6 +170,7 @@ def train(
     betas: Tuple[float, float] = (0.7, 0.95),
     tau: float = 0.005,
     # SHAC params
+    deterministic_train: bool = False,
     discounting: float = 0.9,
     normalize_observations: bool = False,
     reward_scaling: float = 1.,
@@ -270,30 +271,33 @@ def train(
     make_policy = shac_networks.make_inference_fn(shac_network)
 
     # initialize optimizers
-    policy_optimizer = get_optimizer(
+    policy_optimizer, actor_lr_scheduler = get_optimizer(
         schedule=lr_schedule,
         learning_rate=actor_lr,
         grad_norm=actor_grad_norm,
         betas=betas,
-        number_epochs=num_evals_after_init,
+        number_steps=num_evals_after_init * num_training_steps_per_epoch,
     )
 
-    value_optimizer = get_optimizer(
-        schedule="constant",
+    value_steps = num_evals_after_init * num_training_steps_per_epoch * num_minibatches * num_updates_per_batch
+    value_optimizer, critic_lr_scheduler = get_optimizer(
+        schedule=lr_schedule,
         learning_rate=critic_lr,
         grad_norm=critic_grad_norm,
         betas=betas,
+        number_steps=value_steps,
     )
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
         env=env,
         include_time=include_time,
+        deterministic_train=deterministic_train,
         discounting=discounting,
         reward_scaling=reward_scaling,
         gae_lambda=gae_lambda,
         unroll_length=unroll_length,
-        number=batch_size * num_minibatches // num_envs
+        number=batch_size * num_minibatches // num_envs,
     )
 
     critic_update = gradients.gradient_update_fn(
@@ -327,9 +331,13 @@ def train(
             optimizer_state=network_state.optimizer_state,
         )
 
+        scale_by_schedule_state = network_state.optimizer_state[-1]
         metrics = {
             'critic_loss': critic_loss,
         }
+        if lr_schedule == "linear":
+            metrics['critic_learning_rate'] = \
+                critic_lr_scheduler(scale_by_schedule_state.count)
 
         new_network_state = NetworkTrainingState(
             params=value_params,
@@ -382,13 +390,22 @@ def train(
         key_actor, key_critic = jax.random.split(key)
 
         # train actor
-        (_, extras), policy_params, policy_optimizer_state = actor_update(
+        (actor_loss, extras), policy_params, policy_optimizer_state = actor_update(
             training_state.policy_training_state.params,
             training_state.target_value_params,
             training_state.normalizer_params,
             env_state,
             key_actor,
             optimizer_state=training_state.policy_training_state.optimizer_state)
+
+        metrics = {
+            'actor_loss': actor_loss,
+        }
+
+        if lr_schedule == "linear":
+            scale_by_schedule_state = training_state.policy_training_state.optimizer_state[-1]
+            metrics['actor_learning_rate'] = \
+                actor_lr_scheduler(scale_by_schedule_state.count)
 
         nstate = extras["final_state"]
         data = extras["data"]
@@ -417,7 +434,7 @@ def train(
             env_steps=training_state.env_steps + env_step_per_training_step,
         )
 
-        (value_network_state, _), metrics = jax.lax.scan(
+        (value_network_state, _), sgd_metrics = jax.lax.scan(
             functools.partial(
                 critic_sgd_step, data=data, normalizer_params=normalizer_params
             ),
@@ -425,6 +442,7 @@ def train(
             (),
             length=num_updates_per_batch,
         )
+        metrics.update(sgd_metrics)
 
         target_value_params = jax.tree_util.tree_map(
             lambda x, y: x * (1 - tau) + y * tau,
@@ -437,7 +455,7 @@ def train(
             target_value_params=target_value_params
         )
 
-        return training_state, nstate, {} # metrics
+        return training_state, nstate, metrics
 
     def training_epoch(
         training_state: TrainingState,
@@ -543,7 +561,7 @@ def train(
         episode_length=episode_length,
         action_repeat=action_repeat,
         key=eval_key,
-        include_time=True)
+        include_time=include_time)
 
     # Run initial eval
     metrics = {}

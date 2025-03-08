@@ -75,6 +75,7 @@ def make_losses(
     shac_network: shac_networks.DiffRLSHACNetworks,
     env: envs.Env,
     include_time: bool,
+    deterministic_train: bool,
     discounting: float,
     reward_scaling: float,
     gae_lambda: float,
@@ -148,7 +149,7 @@ def make_losses(
         env_state: envs.State,
         key: PRNGKey,
     ):
-        policy = make_policy((normalizer_params, policy_params))
+        policy = make_policy((normalizer_params, policy_params), deterministic=deterministic_train)
 
         final_state, data = generate_batched_unroll(
             env=env,
@@ -159,6 +160,7 @@ def make_losses(
             number=number,
             reward_scaling=reward_scaling,
             extra_fields=('truncation', 'episode_metrics', 'episode_done', 'steps'),
+            include_time=include_time
         )
         # Put the time dimension first.
         ordered_data = jax.tree_util.tree_map(lambda x: jnp.swapaxes(x, 0, 1), data)

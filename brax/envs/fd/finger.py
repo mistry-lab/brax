@@ -50,7 +50,7 @@ class Finger(FDEnv):
         )
         return quaternion
 
-    def reset(self, rng: jax.Array) -> State:
+    def reset(self, rng: jax.Array, flag: bool = False) -> State:
         qpos_init = self._generate_initial_conditions(rng)
         qvel_init = jnp.zeros_like(qpos_init)  # or any distribution you like
 
@@ -66,7 +66,7 @@ class Finger(FDEnv):
 
         return State(dx0, obs, reward, done, metrics)
 
-    def step(self, state: State, u: jnp.ndarray, analytic: bool = False) -> State:
+    def step(self, state: State, u: jnp.ndarray, flag: bool = False) -> State:
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
@@ -79,7 +79,7 @@ class Finger(FDEnv):
 
         touch_reward = - 0.001 * touch * pos_finger **2
 
-        if analytic:
+        if flag:
             state.metrics.update(
                 reward_target = jnp.zeros_like(touch_reward),
                 reward_ctrl = jnp.zeros_like(touch_reward),

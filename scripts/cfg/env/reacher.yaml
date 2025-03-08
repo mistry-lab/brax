@@ -1,15 +1,14 @@
-name: inverted_pendulum
+name: reacher
 include_time: false
 dtype: float64
-flag: true
 
 kwargs:
   eps: 1e-6
-  reward_shaping: true
+  # reward_shaping: true
 
 config:
   # schedule parameters
-  num_timesteps: 2_000_000
+  num_timesteps: 6_553_600
 
   # environment wrapper
   episode_length: 1_000
@@ -26,9 +25,9 @@ config:
 
   # SHAC params
   entropy_cost: 1e-2
-  discounting: 0.97
+  discounting: 0.997
   normalize_observations: True
-  reward_scaling: 10
+  reward_scaling: 30
   gae_lambda: 0.95
 
   # eval
@@ -36,14 +35,24 @@ config:
   num_eval_envs: 128
   deterministic_eval: True
 
+sac:
+  batch_size: 512
+  grad_updates_per_step: 64
+  num_envs: 128
+
+  max_replay_size: 1048576
+  min_replay_size: 8192
+
+  learning_rate: 6e-4
+
 ppo:
   unroll_length: 5
   batch_size: 1024
   num_minibatches: 32
   num_updates_per_batch: 4
-  num_envs: 2048
+  num_envs: 128
 
-  learning_rate: 3e-4
+  learning_rate: 6e-4
 
 diffrl_shac:
   unroll_length: 32

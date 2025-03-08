@@ -3,11 +3,14 @@ network_config_filename: unroll_apg_network_config.json
 module_path: brax.training.agents.unroll_apg.train
 checkpoint_path: brax.training.agents.unroll_apg.checkpoint
 checkpoint_keyword_arg: save_checkpoint_path
+include_time: ${env.include_time}
 
 network_factory_path: brax.training.agents.unroll_apg.networks
 make_network_fn_name: make_apg_network
 
 params:
+  include_time: ${env.include_time}
+
   # schedule parameters
   num_timesteps: ${env.config.num_timesteps}
   batch_size: ${env.unroll_apg.batch_size}
@@ -23,6 +26,7 @@ params:
   betas: ${env.config.betas}
 
   # SHAC params
+  deterministic_train: false
   entropy_cost: ${env.config.entropy_cost}
   discounting: ${env.config.discounting}
   normalize_observations: ${env.config.normalize_observations}

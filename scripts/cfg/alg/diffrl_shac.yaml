@@ -3,11 +3,14 @@ network_config_filename: diffrl_shac_network_config.json
 module_path: brax.training.agents.diffrl_shac.train
 checkpoint_path: brax.training.agents.diffrl_shac.checkpoint
 checkpoint_keyword_arg: save_checkpoint_path
+include_time: ${env.include_time}
 
 network_factory_path: brax.training.agents.diffrl_shac.networks
 make_network_fn_name: make_shac_networks
 
 params:
+  include_time: ${env.include_time}
+
   # schedule parameters
   num_timesteps: ${env.config.num_timesteps}
   unroll_length: ${env.diffrl_shac.unroll_length}
@@ -23,12 +26,14 @@ params:
   # network parameters
   actor_grad_norm: ${env.config.actor_grad_norm}
   critic_grad_norm: ${env.config.critic_grad_norm}
+  lr_schedule: ${env.config.lr_schedule}
   actor_lr: ${env.diffrl_shac.actor_lr}
   critic_lr: ${env.diffrl_shac.critic_lr}
   tau: ${env.config.tau}
   betas: ${env.config.betas}
 
   # SHAC params
+  deterministic_train: false
   discounting: ${env.config.discounting}
   normalize_observations: ${env.config.normalize_observations}
   reward_scaling: ${env.config.reward_scaling}
@@ -36,7 +41,7 @@ params:
 
   # eval
   num_evals: ${env.config.num_evals}
-  num_eval_envs: ${env.diffrl_shac.num_envs}
+  num_eval_envs: ${env.config.num_eval_envs}
   deterministic_eval:  ${env.config.deterministic_eval}
 
 network_factory_params:

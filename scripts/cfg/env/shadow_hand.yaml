@@ -1,19 +1,20 @@
-name: ant
+name: shadow_hand
+terminal_reward_name: shadow_hand
 dtype: float64
 
 config:
   # schedule parameters
-  num_timesteps: 50_000_000
+  num_timesteps: 20_000_000
 
   # environment wrapper
-  episode_length: 1000
+  episode_length: 75
   action_repeat: 1
 
   # network parameters
   actor_grad_norm: 1.0
   critic_grad_norm: 1.0
-  policy_hidden_layer_sizes: [128, 64, 32]
-  value_hidden_layer_sizes: [64, 64]
+  policy_hidden_layer_sizes: [128, 256, 128]
+  value_hidden_layer_sizes: [128, 256, 128]
   tau: 0.2
   betas: [0.7, 0.95]
 
@@ -21,12 +22,11 @@ config:
   entropy_cost: 1e-4
   discounting: 1.0
   normalize_observations: True
-  reward_scaling: 10
+  reward_scaling: 1
   gae_lambda: 0.95
 
   # eval
   num_evals: 20
-  num_eval_envs: 2048
   deterministic_eval: True
 
 ppo:
@@ -46,7 +46,7 @@ diffrl_shac:
   num_envs: 256 
 
   actor_lr: 2e-3
-  critic_lr: 2e-3
+  critic_lr: 1.5e-3
 
 ihac:
   start_unroll_length: 20

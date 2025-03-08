@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - env: finger
+  - env: half_cheetah
   - alg: diffrl_shac
 
 general:

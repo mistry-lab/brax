@@ -61,6 +61,7 @@ def compute_apg_loss(
     rng: jnp.ndarray,
     apg_network: apg_networks.DeterministicAPGNetworks,
     env: envs.Env,
+    include_time: bool,
     episode_length: int,
     number: int,
     discounting: float,
@@ -79,7 +80,7 @@ def compute_apg_loss(
           current_key,
           episode_length,
           extra_fields=('truncation', 'episode_metrics', 'episode_done'),
-          include_time=True,
+          include_time=include_time,
       )
       return (next_state, next_key), data
 

@@ -11,6 +11,7 @@ from brax.v1 import envs as envs_v1
 from brax.training.agents.deterministic_apg import checkpoint
 from brax.training.agents.deterministic_apg import losses as apg_losses
 from brax.training.agents.deterministic_apg import networks as apg_networks
+from brax.training.optimizer import get_optimizer
 
 from absl import logging
 
@@ -120,6 +121,7 @@ def _maybe_wrap_env(
 
 def train(
     environment: envs.Env,
+    include_time: bool,
     # schedule parameters
     num_timesteps: int,
     max_devices_per_host: Optional[int] = None,
@@ -236,16 +238,18 @@ def train(
     make_policy = apg_networks.make_inference_fn(apg_network)
 
     # initialize optimizers
-    optimizer = optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
-    if grad_norm is not None:
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(grad_norm),
-            optax.adam(learning_rate=learning_rate, b1=betas[0], b2=betas[1])
-        )
+    optimizer, lr_scheduler = get_optimizer(
+        schedule=lr_schedule,
+        learning_rate=learning_rate,
+        grad_norm=grad_norm,
+        betas=betas,
+        number_steps=num_evals_after_init * num_training_steps_per_epoch,
+    )
 
     loss_fn = functools.partial(apg_losses.compute_apg_loss,
         apg_network=apg_network,
         env=env,
+        include_time=include_time,
         episode_length=episode_length,
         number=batch_size // num_envs,
         discounting=discounting,
@@ -278,7 +282,7 @@ def train(
         Metrics,
     ]:
         # train actor
-        (_, extras), params, optimizer_state = actor_update(
+        (actor_loss, extras), params, optimizer_state = actor_update(
             training_state.params,
             training_state.normalizer_params,
             env_state,
@@ -287,7 +291,9 @@ def train(
 
         data = extras["data"]
         next_state = extras["next_state"]
+        
         metrics = extras["metrics"]
+        metrics["actor_loss"] = actor_loss
 
         if log_training_metrics:  # log unroll metrics
             jax.debug.callback(
@@ -415,7 +421,7 @@ def train(
         episode_length=episode_length,
         action_repeat=action_repeat,
         key=eval_key,
-        include_time=True)
+        include_time=include_time)
 
     # Run initial eval
     metrics = {}

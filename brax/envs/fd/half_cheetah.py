@@ -129,23 +129,10 @@ class Halfcheetah(FDEnv):
       ctrl_cost_weight=0.1,
       reset_noise_scale=0.1,
       exclude_current_positions_from_observation=True,
-      backend='generalized',
       **kwargs
   ):
     path = epath.resource_path('brax') / 'envs/assets/half_cheetah.xml'
     sys = mjcf.load(path)
-
-    n_frames = 5
-
-    if backend in ['spring', 'positional']:
-      sys = sys.tree_replace({'opt.timestep': 0.003125})
-      n_frames = 16
-      gear = jp.array([120, 90, 60, 120, 100, 100])
-      sys = sys.replace(actuator=sys.actuator.replace(gear=gear))
-
-    kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
-
-    super().__init__(sys=sys, backend=backend, **kwargs)
 
     self._forward_reward_weight = forward_reward_weight
     self._ctrl_cost_weight = ctrl_cost_weight
@@ -154,7 +141,9 @@ class Halfcheetah(FDEnv):
         exclude_current_positions_from_observation
     )
 
-  def reset(self, rng: jax.Array) -> State:
+    super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
+
+  def reset(self, rng: jax.Array, flag: bool = False) -> State:
     """Resets the environment to an initial state."""
     rng, rng1, rng2 = jax.random.split(rng, 3)
 
@@ -176,11 +165,11 @@ class Halfcheetah(FDEnv):
     }
     return State(pipeline_state, obs, reward, done, metrics)
 
-  def step(self, state: State, action: jax.Array) -> State:
+  def step(self, state: State, action: jax.Array, flag: bool = False) -> State:
     """Runs one timestep of the environment's dynamics."""
     pipeline_state0 = state.pipeline_state
     assert pipeline_state0 is not None
-    pipeline_state = self.pipeline_step(pipeline_state0, action)
+    pipeline_state = self.step_fn(pipeline_state0, action)
 
     x_velocity = (
         pipeline_state.x.pos[0, 0] - pipeline_state0.x.pos[0, 0]

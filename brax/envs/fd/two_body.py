@@ -17,7 +17,7 @@ from mujoco.mjx._src.math import quat_to_mat, axis_angle_to_quat
 from brax.io import mjcf
 from brax.envs.base import State
 
-class FingersBall(FDEnv):
+class TwoBody(FDEnv):
     def __init__(self, **kwargs):
         path = epath.resource_path('brax') / 'envs/assets/fd/two_body.xml'
         sys = mjcf.load(path)
@@ -52,7 +52,8 @@ class FingersBall(FDEnv):
         u0 = jnp.ones((Nlength, 1)) * 0.001
         qpos = jnp.array(idata.qpos)    
 
-    def _running_cost(self, dx: mjx.Data):
+    @staticmethod
+    def running_cost(dx: mjx.Data, action: jax.Array):
         quat_ref =   axis_angle_to_quat(jnp.array([0.,1.,0.]), jnp.array([2.35]))
         # Chordal distance :
         # it complies with the four metric requirements while being more numerically stable

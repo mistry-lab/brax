@@ -15,8 +15,8 @@ class TerminalRewardEpisodeWrapper(EpisodeWrapper):
         self.episode_length = episode_length
         self.action_repeat = action_repeat
 
-    def step(self, state: State, action: jax.Array, **kwargs) -> State:
-        state = super().step(state, action, **kwargs)
+    def step(self, state: State, action: jax.Array, flag: bool = False) -> State:
+        state = super().step(state, action, flag)
         next_steps = state.info['steps'] + self.action_repeat
 
         state = state.replace(
@@ -29,6 +29,3 @@ class TerminalRewardEpisodeWrapper(EpisodeWrapper):
         )
 
         return state
-
-    def reset(self, rng: jax.Array) -> State:
-        return super().reset(rng)

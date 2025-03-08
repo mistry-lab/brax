@@ -33,7 +33,7 @@ class FingersBall(FDEnv):
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
-        reward = -self._running_cost(dx_next)
+        reward = -FingersBall.running_cost(dx_next, u)
 
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward
@@ -57,7 +57,8 @@ class FingersBall(FDEnv):
 
         return u0
 
-    def _running_cost(self, dx: mjx.Data):
+    @staticmethod
+    def running_cost(dx: mjx.Data, action: jax.Array):
         quat_ref =   axis_angle_to_quat(jnp.array([0.,0.,1.]), jnp.array([2.35]))
         # Chordal distance :
         # it complies with the four metric requirements while being more numerically stable

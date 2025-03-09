@@ -105,7 +105,7 @@ class Finger(FDEnv):
         )
 
     def _get_observation(self, dx: State):
-        return jnp.concatenate([dx.qpos, dx.qvel])
+        return jnp.concatenate([dx.qpos, dx.qvel, dx.sensordata])
 
     def _generate_initial_conditions(self, key: jax.Array) -> State:
         # Solution of IK

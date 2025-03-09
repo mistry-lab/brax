@@ -125,6 +125,7 @@ class Halfcheetah(FDEnv):
 
   def __init__(
       self,
+      reward_shaping: bool = False,
       forward_reward_weight=1.0,
       ctrl_cost_weight=0.1,
       reset_noise_scale=0.1,
@@ -133,6 +134,8 @@ class Halfcheetah(FDEnv):
   ):
     path = epath.resource_path('brax') / 'envs/assets/half_cheetah.xml'
     sys = mjcf.load(path)
+
+    self._reward_shaping = reward_shaping
 
     self._forward_reward_weight = forward_reward_weight
     self._ctrl_cost_weight = ctrl_cost_weight
@@ -176,6 +179,9 @@ class Halfcheetah(FDEnv):
     ) / self.sys.opt.timestep
     forward_reward = self._forward_reward_weight * x_velocity
     ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+
+    if self._reward_shaping:
+      forward_reward = self._forward_reward_weight * pipeline_state.qvel[0]
 
     obs = self._get_obs(pipeline_state)
     reward = forward_reward - ctrl_cost

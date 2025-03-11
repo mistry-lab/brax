@@ -22,14 +22,15 @@ from typing import Tuple
 
 from brax import base
 from brax import math
-from brax.envs.base import PipelineEnv, State
+from brax.envs.base import State
+from brax.envs.fd.fd_env import FDEnv
 from brax.io import mjcf
 from etils import epath
 import jax
 from jax import numpy as jp
 
 
-class Reacher(PipelineEnv):
+class Reacher(FDEnv):
 
 
 
@@ -155,23 +156,12 @@ class Reacher(PipelineEnv):
 
 
   def __init__(self, backend='generalized', **kwargs):
-    path = epath.resource_path('brax') / 'envs/assets/reacher.xml'
+    path = epath.resource_path('brax') / 'envs/assets/fd/reacher.xml'
     sys = mjcf.load(path)
 
-    n_frames = 2
+    super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
-    if backend in ['spring', 'positional']:
-      sys = sys.tree_replace({'opt.timestep': 0.005})
-      sys = sys.replace(
-          actuator=sys.actuator.replace(gear=jp.array([25.0, 25.0]))
-      )
-      n_frames = 4
-
-    kwargs['n_frames'] = kwargs.get('n_frames', n_frames)
-
-    super().__init__(sys=sys, backend=backend, **kwargs)
-
-  def reset(self, rng: jax.Array) -> State:
+  def reset(self, rng: jax.Array, flag: bool = False) -> State:
     rng, rng1, rng2 = jax.random.split(rng, 3)
 
     q = self.sys.init_q + jax.random.uniform(
@@ -196,8 +186,8 @@ class Reacher(PipelineEnv):
     }
     return State(pipeline_state, obs, reward, done, metrics)
 
-  def step(self, state: State, action: jax.Array) -> State:
-    pipeline_state = self.pipeline_step(state.pipeline_state, action)
+  def step(self, state: State, action: jax.Array, flag: bool = False) -> State:
+    pipeline_state = self.step_fn(state.pipeline_state, action)
     obs = self._get_obs(pipeline_state)
 
     # vector from tip to target is last 3 entries of obs vector

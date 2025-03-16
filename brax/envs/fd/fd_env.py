@@ -6,21 +6,20 @@ from typing import Optional, Set
 import jax
 
 import brax.fd.pipeline as fd_pipeline
-import brax.quat_fd.pipeline as quat_fd_pipeline
 
 from brax.fd.base import State
 from brax.base import System
-from brax import base
 
 from typing import Mapping, Tuple, Union
 
 ObservationSize = Union[int, Mapping[str, Union[Tuple[int, ...], int]]]
 
 class FDEnv(Env):
-    def __init__(self, sys: System, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, quat: bool = False):
+    def __init__(self, sys: System, target_fields: Optional[Set[str]] = None, eps: float = 1e-6, dtype = "float32"):
         self.sys = sys
         self.mx = mjx.put_model(self.sys.mj_model)
-        dx = fd_pipeline.make_upscaled_data(self.mx)
+        dx = fd_pipeline.make_upscaled_data(self.mx) if dtype == "float64" \
+              else mjx.make_data(self.mx)
 
         self.dx = fd_pipeline.init(self.sys, dx.qpos, dx.qvel)
 

@@ -49,15 +49,14 @@ def compute_generalized_td_value(
     deltas *= 1 - truncation
 
     acc = jnp.zeros_like(bootstrap_value)
-    vs_minus_v_xs = []
 
     def compute_vs_minus_v_xs(carry, target_t):
-        lambda_, acc = carry
+        actor_xi, acc = carry
         truncation_mask, delta, termination = target_t
         acc = delta + discount * (1 - termination) * truncation_mask * actor_xi * acc
-        return (lambda_, acc), (acc)
+        return (actor_xi, acc), (acc)
 
-    (_, generalized_value), (vs_minus_v_xs) = jax.lax.scan(
+    (_, generalized_value), (_) = jax.lax.scan(
         compute_vs_minus_v_xs,
         (actor_xi, acc),
         (truncation_mask, deltas, termination),

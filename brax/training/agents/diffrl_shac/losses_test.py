@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from brax.training.agents.diffrl_shac import losses as shac_losses
+from brax.training.gae import compute_vs
 
 class DiffRLLossesTest(parameterized.TestCase):
     def testComputeGAE(self):
@@ -14,7 +15,7 @@ class DiffRLLossesTest(parameterized.TestCase):
         values = jnp.array([30_000., 30_000., 90_000., 90_000.])
         bootstrap_value = jnp.array(100_000.)
 
-        vs = shac_losses.compute_gae(
+        vs = compute_vs(
             truncation=truncation,
             termination=termination,
             rewards=rewards,
@@ -33,7 +34,7 @@ class DiffRLLossesTest(parameterized.TestCase):
         values = jnp.array([30_000., 30_000., 90_000., 90_000.])
         bootstrap_value = jnp.array(100_000.)
 
-        vs = shac_losses.compute_gae(
+        vs = compute_vs(
             truncation=truncation,
             termination=termination,
             rewards=rewards,
@@ -52,7 +53,7 @@ class DiffRLLossesTest(parameterized.TestCase):
         values = jnp.array([30_000., 30_000., 90_000., 90_000.])
         bootstrap_value = jnp.array(100_000.)
 
-        vs = shac_losses.compute_gae(
+        vs = compute_vs(
             truncation=truncation,
             termination=termination,
             rewards=rewards,
@@ -71,7 +72,7 @@ class DiffRLLossesTest(parameterized.TestCase):
         values = jnp.array([30_000., 30_000., 90_000., 90_000.])
         bootstrap_value = jnp.array(10.)
 
-        vs = shac_losses.compute_gae(
+        vs = compute_vs(
             truncation=truncation,
             termination=termination,
             rewards=rewards,
@@ -154,6 +155,78 @@ class DiffRLLossesTest(parameterized.TestCase):
         )
 
         np.testing.assert_approx_equal(td_value, jnp.array(3_250.))
+
+    def testComputeUndiscountedTDValues(self):
+        truncation = jnp.array([0., 0., 0., 0., 0.])
+        termination = jnp.array([0., 0., 0., 0., 0.])
+        rewards = jnp.array([1., 10., 200., 3_000., 10_000.])
+        values = jnp.array([-999., -999., -999., -999., -999.])
+        bootstrap_value = jnp.array(100_000.)
+
+        td_value = shac_losses.compute_td_value(
+            truncation=truncation,
+            termination=termination,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            discount=1.,
+        )
+
+        np.testing.assert_approx_equal(td_value, jnp.array(113_211))
+
+    def testComputeUndiscountedTDValuesTerminated(self):
+        truncation = jnp.array([0., 0., 0., 0., 1.])
+        termination = jnp.array([0., 0., 0., 1., 1.])
+        rewards = jnp.array([1., 10., 200., 3_000., 10_000.])
+        values = jnp.array([-999., -999., -999., -999., -999.])
+        bootstrap_value = jnp.array(100_000.)
+
+        td_value = shac_losses.compute_td_value(
+            truncation=truncation,
+            termination=termination,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            discount=1.,
+        )
+
+        np.testing.assert_approx_equal(td_value, jnp.array(3_211.))
+
+    def testComputeUndiscountedTDValuesTruncated(self):
+        truncation = jnp.array([0., 0., 0., 1., 1.])
+        termination = jnp.array([0., 0., 0., 1., 1.])
+        rewards = jnp.array([1., 10., 200., 3_000., 10_000.])
+        values = jnp.array([-999., -999., -999., 4_000., -999.])
+        bootstrap_value = jnp.array(100_000.)
+
+        td_value = shac_losses.compute_td_value(
+            truncation=truncation,
+            termination=termination,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            discount=1.,
+        )
+
+        np.testing.assert_approx_equal(td_value, jnp.array(4_211))
+
+    def testComputeUndiscountedTDValuesReset(self):
+        truncation = jnp.array([0., 0., 1., 0., 0.])
+        termination = jnp.array([0., 0., 1., 0., 0.])
+        rewards = jnp.array([1., 10., 200., 3_000., 10_000.])
+        values = jnp.array([-999., -999., 4_000., -999., -999.])
+        bootstrap_value = jnp.array(100_000.)
+
+        td_value = shac_losses.compute_td_value(
+            truncation=truncation,
+            termination=termination,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            discount=1.,
+        )
+
+        np.testing.assert_approx_equal(td_value, jnp.array(4_011.))
 
 if __name__ == '__main__':
     absltest.main()

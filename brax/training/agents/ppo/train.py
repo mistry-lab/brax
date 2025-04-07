@@ -357,6 +357,8 @@ def train(
       )
   ).astype(int)
 
+  print(f"Training steps per epoch: {num_training_steps_per_epoch}")
+
   key = jax.random.PRNGKey(seed)
   global_key, local_key = jax.random.split(key)
   del key
@@ -685,6 +687,17 @@ def train(
   training_metrics = {}
   training_walltime = 0
   current_step = 0
+
+  params = _unpmap((
+      training_state.normalizer_params,
+      training_state.params.policy,
+      training_state.params.value,
+  ))
+
+  checkpoint.save(
+      save_checkpoint_path, current_step, params, ckpt_config
+  )
+
   for it in range(num_evals_after_init):
     logging.info('starting iteration %s %s', it, time.time() - xt)
 

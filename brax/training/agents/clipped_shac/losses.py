@@ -124,7 +124,7 @@ def compute_td_value_backward(res, g):
         discount_in,
     )
 
-    value_ratio = jnp.mean(d_values) # 10_000 * jnp.sum(jnp.mean(d_reward, axis=-1)) / jnp.mean(d_values)
+    value_ratio = jnp.sum(jnp.mean(d_reward, axis=-1))
 
     d_truncation, d_termination, d_reward, d_values, d_boostrap_value, d_discount = jax.grad(
         _compute_td_value, argnums=(0, 1, 2, 3, 4, 5)
@@ -132,8 +132,8 @@ def compute_td_value_backward(res, g):
         truncation_in,
         termination_in,
         rewards_in,
-        values_in,
-        bootstrap_value_in,
+        value_ratio * values_in,
+        value_ratio * bootstrap_value_in,
         discount_in,
     )
 

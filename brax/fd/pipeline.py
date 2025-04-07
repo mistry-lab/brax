@@ -125,7 +125,7 @@ def make_step_fn(
     sys: System,
     set_control_fn: Callable,
     fd_cache: FDCache
-):
+) -> Callable:
     """
     Create a custom_vjp step function that takes (dx, u) and returns dx_next.
     We do finite differences (FD) in the backward pass using the info in fd_cache.
@@ -186,6 +186,15 @@ def make_step_fn(
         inner_idx = fd_cache.inner_idx
         num_u_dims = fd_cache.num_u_dims
         eps = fd_cache.eps
+
+        # e = jnp.zeros_like(u_in_flat).at[i].set(eps)
+        # u_in_eps_positive = (u_in_flat + e).reshape(u_in.shape)
+        # dx_perturbed_positive = step_fn(dx_in, u_in_eps_positive)
+        # dx_perturbed_array_positive, _ = ravel_pytree(dx_perturbed_positive)
+
+        # u_in_eps_negative = (u_in_flat - e).reshape(u_in.shape)
+        # dx_perturbed_negative = step_fn(dx_in, u_in_eps_negative)
+        # dx_perturbed_array_negative, _ = ravel_pytree(dx_perturbed_negative)
 
         # =====================================================
         # =============== FD wrt control (u) ==================

@@ -28,7 +28,8 @@ def generate_batched_unroll(
     ):
 
     def f(carry, unused_t):
-        current_state = carry
+        current_state, current_key = carry
+        current_key, next_key = jax.random.split(current_key)
         next_state, data = generate_unroll(
             env=env,
             env_state=current_state,
@@ -49,11 +50,11 @@ def generate_batched_unroll(
             extras=data.extras
         )
 
-        return next_state, data
+        return (next_state, next_key), data
 
-    final_state, data = jax.lax.scan(
+    (final_state, _), data = jax.lax.scan(
         f,
-        env_state,
+        (env_state, key),
         (),
         length=number,
     )

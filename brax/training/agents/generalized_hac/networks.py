@@ -51,8 +51,8 @@ def make_shac_networks(
     .identity_observation_preprocessor,
     policy_hidden_layer_sizes: Sequence[int] = (32,) * 4,
     value_hidden_layer_sizes: Sequence[int] = (256,) * 5,
-    activation: networks.ActivationFn = linen.swish,
-    layer_norm: bool = False,
+    activation: networks.ActivationFn = linen.elu,
+    layer_norm: bool = True,
     dtype: Dtype = 'float64') -> DiffRLSHACNetworks:
   """Make SHAC networks with preprocessor."""
   parametric_action_distribution = distribution.NormalTanhDistribution(
@@ -64,6 +64,12 @@ def make_shac_networks(
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=policy_hidden_layer_sizes,
       activation=activation,
+      kernel_init=jax.nn.initializers.variance_scaling(
+        scale=0.1,
+        mode="fan_in",
+        distribution="uniform",
+        dtype=dtype
+      ),
       layer_norm=layer_norm,
       dtype=dtype)
   value_network = networks.make_value_network(
@@ -71,6 +77,12 @@ def make_shac_networks(
       preprocess_observations_fn=preprocess_observations_fn,
       hidden_layer_sizes=value_hidden_layer_sizes,
       activation=activation,
+      # kernel_init=jax.nn.initializers.variance_scaling(
+      #   scale=0.1,
+      #   mode="fan_in",
+      #   distribution="uniform",
+      #   dtype=dtype
+      # ),
       layer_norm=layer_norm,
       dtype=dtype)
 

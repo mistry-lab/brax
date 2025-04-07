@@ -146,6 +146,7 @@ def make_losses(
         value_params: Params,
         normalizer_params: Any,
         env_state: envs.State,
+        value_scaling_factor: float,
         key: PRNGKey,
     ):
         policy = make_policy((normalizer_params, policy_params), deterministic=deterministic_train)
@@ -201,8 +202,8 @@ def make_losses(
             truncation=truncation,
             termination=termination,
             rewards=ordered_data.reward,
-            values=values,
-            bootstrap_value=bootstrap_value,
+            values=value_scaling_factor * values,
+            bootstrap_value=value_scaling_factor * bootstrap_value,
             actor_xi=actor_xi,
             discount=discounting
         )

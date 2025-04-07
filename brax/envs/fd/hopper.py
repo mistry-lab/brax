@@ -157,7 +157,6 @@ class Hopper(FDEnv):
       healthy_angle_range=(-0.2, 0.2),
       reset_noise_scale=5e-3,
       exclude_current_positions_from_observation=True,
-      backend='generalized',
       **kwargs
   ):
     """Creates a Hopper environment.
@@ -183,12 +182,11 @@ class Hopper(FDEnv):
 
     self._reward_shaping = reward_shaping
 
-    self._termination_height = -0.45
     self._termination_angle = jp.pi / 6.
 
     self._termination_height_tolerance = 0.15
-    self._termination_angle_tolerance = 0.05
     self._height_rew_scale = 1.0
+    self._action_strength = 200.0
 
     self._forward_reward_weight = forward_reward_weight
     self._ctrl_cost_weight = ctrl_cost_weight
@@ -201,6 +199,43 @@ class Hopper(FDEnv):
     self._exclude_current_positions_from_observation = (
         exclude_current_positions_from_observation
     )
+
+    def _surrogate_reward(z: jax.Array, angle: jax.Array, qvel: jax.Array, action: jax.Array):
+      ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+      forward_reward = self._forward_reward_weight * qvel[0]
+
+      min_z = self._healthy_z_range[0]
+      height_diff = z - (min_z + self._termination_height_tolerance)
+      height_reward = jp.clip(height_diff, -1.0, 0.3)
+      height_reward = jp.where(height_reward < 0.0, -200.0 * height_reward * height_reward, height_reward)
+      height_reward = jp.where(height_reward > 0.0, self._height_rew_scale * height_reward, height_reward)
+
+      # angle_reward = 1. * (-angle ** 2 / (self._termination_angle ** 2) + 1.)
+
+      reward = forward_reward - ctrl_cost
+
+      return reward
+
+    surrogate_derivative = jax.grad(_surrogate_reward, argnums=(0, 1, 2, 3))
+
+    @jax.custom_vjp
+    def _get_reward(x_velocity: jax.Array, z: jax.Array, angle: jax.Array, qvel: jax.Array, action: jax.Array):
+        forward_reward = self._forward_reward_weight * x_velocity
+        ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+        return forward_reward - ctrl_cost
+
+    def _get_reward_forward(x_velocity: jax.Array, z: jax.Array, angle: jax.Array, qvel: jax.Array, action: jax.Array):
+        reward = _get_reward(x_velocity, z, angle, qvel, action)
+        return reward, (z, angle, qvel, action, reward)
+
+    def _get_reward_backward(res, g):
+        z, angle, qvel, action, reward = res
+        d_z, d_angle, d_qvel, d_action = surrogate_derivative(z, angle, qvel, action)
+
+        return (g, d_z * g, d_angle * g, d_qvel * g, d_action * g)
+
+    _get_reward.defvjp(_get_reward_forward, _get_reward_backward)
+    self.reward_fn = _get_reward
 
     super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
@@ -240,7 +275,7 @@ class Hopper(FDEnv):
     """Runs one timestep of the environment's dynamics."""
     pipeline_state0 = state.pipeline_state
     assert pipeline_state0 is not None
-    pipeline_state = self.step_fn(pipeline_state0, action)
+    pipeline_state = self.step_fn(pipeline_state0, action * self._action_strength)
 
     x_velocity = (
         pipeline_state.x.pos[0, 0] - pipeline_state0.x.pos[0, 0]
@@ -262,31 +297,31 @@ class Hopper(FDEnv):
     else:
       healthy_reward = self._healthy_reward * is_healthy
 
-    ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
-
     obs = self._get_obs(pipeline_state)
     done = 1.0 - is_healthy if self._terminate_when_unhealthy else 0.0
-    
+
     state.metrics.update(
-        reward_forward=forward_reward,
-        reward_ctrl=-ctrl_cost,
         reward_healthy=healthy_reward,
         x_position=pipeline_state.x.pos[0, 0],
         x_velocity=x_velocity,
     )
 
     if self._reward_shaping:
-      height_diff = z - (self._termination_height + self._termination_height_tolerance)
+      ctrl_cost = self._ctrl_cost_weight * jp.sum(jp.square(action))
+      forward_reward = self._forward_reward_weight * pipeline_state.qvel[0]
+
+      height_diff = z - (min_z + self._termination_height_tolerance)
       height_reward = jp.clip(height_diff, -1.0, 0.3)
       height_reward = jp.where(height_reward < 0.0, -200.0 * height_reward * height_reward, height_reward)
       height_reward = jp.where(height_reward > 0.0, self._height_rew_scale * height_reward, height_reward)
 
       angle_reward = 1. * (-angle ** 2 / (self._termination_angle ** 2) + 1.)
-      progress_reward = pipeline_state.x.pos[0, 0]
 
-      reward = progress_reward + height_reward + angle_reward + ctrl_cost * self._ctrl_cost_weight
+      reward = forward_reward + height_reward + angle_reward - ctrl_cost
 
       state.metrics.update(
+          reward_ctrl=-ctrl_cost,
+          reward_forward=forward_reward,
           reward_height=height_reward,
           reward_angle=angle_reward,
       )
@@ -295,7 +330,7 @@ class Hopper(FDEnv):
         pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
       )
 
-    reward = forward_reward + healthy_reward - ctrl_cost
+    reward = self.reward_fn(x_velocity, z, angle, pipeline_state.qvel, action)
     return state.replace(
         pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
     )

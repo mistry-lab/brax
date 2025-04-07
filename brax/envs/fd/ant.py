@@ -173,7 +173,7 @@ class Ant(FDEnv):
     sys = mjcf.load(path)
     super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
-  def reset(self, rng: jax.Array) -> State:
+  def reset(self, rng: jax.Array, flag: bool = False) -> State:
     """Resets the environment to an initial state."""
     rng, rng1, rng2 = jax.random.split(rng, 3)
 
@@ -201,7 +201,7 @@ class Ant(FDEnv):
     }
     return State(pipeline_state, obs, reward, done, metrics)
 
-  def step(self, state: State, action: jax.Array, analytic: bool = False) -> State:
+  def step(self, state: State, action: jax.Array, flag: bool = False) -> State:
     """Run one timestep of the environment's dynamics."""
     pipeline_state0 = state.pipeline_state
     assert pipeline_state0 is not None

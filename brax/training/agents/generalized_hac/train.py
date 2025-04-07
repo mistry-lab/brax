@@ -271,13 +271,15 @@ def train(
         preprocess_observations_fn=normalize)
     make_policy = shac_networks.make_inference_fn(shac_network)
 
+    policy_steps = num_evals_after_init * num_training_steps_per_epoch
+
     # initialize optimizers
     policy_optimizer, actor_lr_scheduler = get_optimizer(
         schedule=lr_schedule,
         learning_rate=actor_lr,
         grad_norm=actor_grad_norm,
         betas=betas,
-        number_steps=num_evals_after_init * num_training_steps_per_epoch,
+        number_steps=policy_steps,
     )
 
     value_steps = num_evals_after_init * num_training_steps_per_epoch * num_minibatches * num_updates_per_batch
@@ -288,6 +290,8 @@ def train(
         betas=betas,
         number_steps=value_steps,
     )
+
+    value_scaling_schedule = optax.linear_schedule(0, 20, policy_steps)
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
@@ -393,12 +397,17 @@ def train(
     ]:
         key_actor, key_critic = jax.random.split(key)
 
+        value_scaling_factor = value_scaling_schedule(
+            training_state.policy_training_state.gradient_steps
+        )
+
         # train actor
         (actor_loss, extras), policy_params, policy_optimizer_state = actor_update(
             training_state.policy_training_state.params,
             training_state.target_value_params,
             training_state.normalizer_params,
             env_state,
+            value_scaling_factor,
             key_actor,
             optimizer_state=training_state.policy_training_state.optimizer_state)
 

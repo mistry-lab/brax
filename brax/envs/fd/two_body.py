@@ -1,31 +1,29 @@
 import jax
 import jax.numpy as jnp
-import mujoco
 from mujoco import mjx
 from mujoco.mjx._src.math import quat_to_mat, axis_angle_to_quat
 
-from brax.envs.fd.fd_env import FDEnv
+from brax.envs.fd.quat_fd_env import QuatFDEnv
 
 from etils import epath
 
 import jax
 import jax.numpy as jnp
-import mujoco
 from mujoco import mjx
 from mujoco.mjx._src.math import quat_to_mat, axis_angle_to_quat
 
 from brax.io import mjcf
 from brax.envs.base import State
 
-class TwoBody(FDEnv):
+class TwoBody(QuatFDEnv):
     def __init__(self, **kwargs):
         path = epath.resource_path('brax') / 'envs/assets/fd/two_body.xml'
         sys = mjcf.load(path)
-        super().__init__(sys=sys, target_fields={"qpos", "qvel"}, **kwargs) 
+        super().__init__(sys=sys, ctrl_dim=1, target_fields={"qpos", "qvel"}, **kwargs) 
 
-    def reset(self, rng: jax.Array, upscale=False) -> State:
-        qpos_init = self._generate_initial_conditions(rng)
-        qvel_init = jnp.zeros_like(qpos_init)  # or any distribution you like
+    def reset(self, rng: jax.Array, flag: bool = False) -> State:
+        qpos_init = self.dx.qpos
+        qvel_init = self.dx.qvel
 
         dx0 = self.pipeline_init(qpos_init, qvel_init)
         obs = self._get_observation(dx0)
@@ -35,11 +33,11 @@ class TwoBody(FDEnv):
 
         return State(dx0, obs, reward, done, metrics)
 
-    def step(self, state: State, u: jnp.ndarray) -> State:
+    def step(self, state: State, u: jnp.ndarray, flag: bool = False) -> State:
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
-        reward = -self._running_cost(dx_next)
+        reward = -TwoBody.running_cost(dx_next, u)
 
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward
@@ -47,10 +45,6 @@ class TwoBody(FDEnv):
 
     def _get_observation(self, dx: mjx.Data):
         return jnp.concatenate([dx.qpos, dx.qvel])
-    
-    def _generate_initial_conditions(self, rng: jax.Array) -> State:
-        u0 = jnp.ones((Nlength, 1)) * 0.001
-        qpos = jnp.array(idata.qpos)    
 
     @staticmethod
     def running_cost(dx: mjx.Data, action: jax.Array):
@@ -79,6 +73,10 @@ class TwoBody(FDEnv):
         return 0.001*costR + 0.000001*dx.qfrc_applied[2]**2 + 0.000001*dx.qvel[2]**2
         # return 0.00001 * dx.qfrc_applied[5] ** 2
 
-    def set_control(dx, u):
+    def set_control(self, dx, u):
         dx = dx.replace(qfrc_applied=dx.qfrc_applied.at[1].set(u[0]))
         return dx
+
+    @property
+    def action_size(self) -> int:
+        return 1

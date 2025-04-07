@@ -78,7 +78,7 @@ def _init_training_state(
     value_optimizer_state = value_optimizer.init(value_params)
 
     normalizer_params = running_statistics.init_state(
-        specs.Array((obs_size,), jnp.dtype('float32'))
+        specs.Array((obs_size,), jnp.dtype('float64'))
     )
 
     training_state = TrainingState(
@@ -324,7 +324,7 @@ def train(
         data: Transition,
         normalizer_params: running_statistics.RunningStatisticsState,
     ):
-        critic_loss, value_params, value_optimizer_state = critic_update(
+        (critic_loss, metrics), value_params, value_optimizer_state = critic_update(
             network_state.params,
             normalizer_params,
             data,
@@ -334,6 +334,8 @@ def train(
         scale_by_schedule_state = network_state.optimizer_state[-1]
         metrics = {
             'critic_loss': critic_loss,
+            'critic_baseline': metrics["baseline"],
+            'critic_value_targets': metrics["value_targets"],
         }
         if lr_schedule == "linear":
             metrics['critic_learning_rate'] = \
@@ -407,7 +409,7 @@ def train(
             metrics['actor_learning_rate'] = \
                 actor_lr_scheduler(scale_by_schedule_state.count)
 
-        nstate = extras["final_state"]
+        next_state = extras["next_state"]
         data = extras["data"]
 
         if log_training_metrics:  # log unroll metrics
@@ -455,7 +457,7 @@ def train(
             target_value_params=target_value_params
         )
 
-        return training_state, nstate, metrics
+        return training_state, next_state, metrics
 
     def training_epoch(
         training_state: TrainingState,

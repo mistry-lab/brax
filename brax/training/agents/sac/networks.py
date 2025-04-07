@@ -61,7 +61,7 @@ def make_sac_networks(
     action_size: int,
     preprocess_observations_fn: types.PreprocessObservationFn = types.identity_observation_preprocessor,
     hidden_layer_sizes: Sequence[int] = (256, 256),
-    activation: networks.ActivationFn = linen.relu,
+    activation: networks.ActivationFn = linen.elu,
     policy_network_layer_norm: bool = False,
     q_network_layer_norm: bool = False,
 ) -> SACNetworks:

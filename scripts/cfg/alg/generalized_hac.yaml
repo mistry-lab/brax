@@ -1,0 +1,52 @@
+name: generalized_hac
+network_config_filename: generalized_hac_network_config.json
+module_path: brax.training.agents.generalized_hac.train
+checkpoint_path: brax.training.agents.generalized_hac.checkpoint
+checkpoint_keyword_arg: save_checkpoint_path
+include_time: ${env.include_time}
+
+network_factory_path: brax.training.agents.generalized_hac.networks
+make_network_fn_name: make_shac_networks
+make_inference_fn_name: make_inference_fn
+
+params:
+  include_time: ${env.include_time}
+
+  # schedule parameters
+  num_timesteps: ${env.config.num_timesteps}
+  unroll_length: ${env.generalized_hac.unroll_length}
+  batch_size: ${env.generalized_hac.batch_size}
+  num_minibatches: ${env.generalized_hac.num_minibatches}
+  num_updates_per_batch: ${env.generalized_hac.num_updates_per_batch}
+
+  # environment wrapper
+  num_envs: ${env.generalized_hac.num_envs}
+  episode_length: ${env.config.episode_length}
+  action_repeat: ${env.config.action_repeat}
+
+  # network parameters
+  actor_grad_norm: ${env.config.actor_grad_norm}
+  critic_grad_norm: ${env.config.critic_grad_norm}
+  lr_schedule: ${env.config.lr_schedule}
+  actor_lr: ${env.generalized_hac.actor_lr}
+  critic_lr: ${env.generalized_hac.critic_lr}
+  tau: ${env.config.tau}
+  betas: ${env.config.betas}
+
+  # SHAC params
+  deterministic_train: true
+  discounting: ${env.config.discounting}
+  normalize_observations: ${env.config.normalize_observations}
+  reward_scaling: ${env.generalized_hac.reward_scaling}
+  gae_lambda: ${env.config.gae_lambda}
+  actor_xi: ${env.config.actor_xi}
+
+  # eval
+  num_evals: ${env.config.num_evals}
+  num_eval_envs: ${env.config.num_eval_envs}
+  deterministic_eval:  ${env.config.deterministic_eval}
+
+network_factory_params:
+  policy_hidden_layer_sizes: ${env.config.policy_hidden_layer_sizes}
+  value_hidden_layer_sizes: ${env.config.value_hidden_layer_sizes}
+  dtype: ${env.dtype}

@@ -4,69 +4,86 @@ dtype: float64
 
 kwargs:
   eps: 1e-6
+  dtype: ${env.dtype}
   # reward_shaping: true
 
 config:
   # schedule parameters
-  num_timesteps: 6_553_600
+  num_timesteps: 50_000
 
   # environment wrapper
-  episode_length: 1_000
-  action_repeat: 1
+  episode_length: 200
+  action_repeat: 4
 
   # network parameters
   actor_grad_norm: 1.0
   critic_grad_norm: 1.0
   lr_schedule: constant
-  policy_hidden_layer_sizes: [64, 64]
-  value_hidden_layer_sizes: [64, 64]
+  policy_hidden_layer_sizes: [64, 64] # [128, 64, 32]
+  value_hidden_layer_sizes: [64, 64] # [128, 128]
   tau: 0.8
   betas: [0.7, 0.95]
 
   # SHAC params
-  entropy_cost: 1e-2
-  discounting: 0.997
+  entropy_cost: 1e-3
+  discounting: 0.95
   normalize_observations: True
-  reward_scaling: 30
   gae_lambda: 0.95
+  actor_xi: 0.95
 
   # eval
   num_evals: 20
   num_eval_envs: 128
   deterministic_eval: True
 
-sac:
-  batch_size: 512
-  grad_updates_per_step: 64
-  num_envs: 128
+# sac:
+#   batch_size: 512
+#   grad_updates_per_step: 64
+#   num_envs: 128
 
-  max_replay_size: 1048576
-  min_replay_size: 8192
+#   max_replay_size: 1048576
+#   min_replay_size: 8192
 
-  learning_rate: 6e-4
+#   learning_rate: 6e-4
 
 ppo:
-  unroll_length: 5
-  batch_size: 1024
+  num_envs: 2048
+  learning_rate: 3e-4
+  unroll_length: 50
+  batch_size: 256
   num_minibatches: 32
-  num_updates_per_batch: 4
-  num_envs: 128
-
-  learning_rate: 6e-4
+  num_updates_per_batch: 8
+  reward_scaling: 5
 
 diffrl_shac:
   unroll_length: 32
-  batch_size: 1024
+  batch_size: 16
+  num_minibatches: 4
+  num_updates_per_batch: 16
+  num_envs: 64
+
+  reward_scaling: 1
+
+  actor_lr: 2e-4
+  critic_lr: 1e-3
+
+generalized_hac:
+  unroll_length: 32
+  batch_size: 512
   num_minibatches: 4
   num_updates_per_batch: 16
   num_envs: 2048
 
-  actor_lr: 1e-3
-  critic_lr: 1e-4
+  reward_scaling: 1
+
+  actor_lr: 2e-3
+  critic_lr: 1e-3
 
 unroll_apg:
-  batch_size: 1024
-  num_envs: 1024
+  batch_size: 64
+  num_envs: 64
+
+  reward_scaling: 1 # 5
 
   learning_rate: 1e-3
 

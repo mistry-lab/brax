@@ -25,7 +25,7 @@ def make_inference_fn(apg_networks: DeterministicAPGNetworks):
     ) -> Tuple[types.Action, types.Extra]:
       logits = apg_networks.policy_network.apply(*params, observations, step) if step is not None \
         else apg_networks.policy_network.apply(*params, observations)
-      return logits, {}
+      return jnp.tanh(logits), {}
 
     return policy
 

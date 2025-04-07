@@ -12,9 +12,63 @@ import jax
 import jax.numpy as jnp
 from jax._src.util import unzip2
 from jax.flatten_util import ravel_pytree
+from brax.fd.base import State
+from brax.base import Motion, System, Transform
+
+def upscale(x):
+    if 'dtype' in dir(x):
+        if x.dtype == jnp.int32:
+            return jnp.int64(x)
+        elif x.dtype == jnp.float32:
+            return jnp.float64(x)
+    return x
+
+def make_upscaled_data(mx: mjx.Data):
+    dx_template = mjx.make_data(mx)
+    dx_template = jax.tree.map(upscale, dx_template)
+    return dx_template
+
+def init(
+        sys: System,
+        q: jax.Array,
+        qd: jax.Array,
+        act: Optional[jax.Array] = None,
+        ctrl: Optional[jax.Array] = None,
+        unused_debug: bool = False,
+    ) -> State:
+    """Initializes physics data.
+
+    Args:
+        sys: a brax System
+        q: (q_size,) joint angle vector
+        qd: (qd_size,) joint velocity vector
+        act: actuator activations
+        ctrl: actuator controls
+        unused_debug: ignored
+
+    Returns:
+        data: initial physics data
+    """
+    data = make_upscaled_data(sys)
+    data = data.replace(qpos=q, qvel=qd)
+    if act is not None:
+        data = data.replace(act=act)
+    if ctrl is not None:
+        data = data.replace(ctrl=ctrl)
+
+    data = mjx.forward(sys, data)
+
+    q, qd = data.qpos, data.qvel
+    x = Transform(pos=data.xpos[1:], rot=data.xquat[1:])
+    cvel = Motion(vel=data.cvel[1:, 3:], ang=data.cvel[1:, :3])
+    offset = data.xpos[1:, :] - data.subtree_com[sys.body_rootid[1:]]
+    offset = Transform.create(pos=offset)
+    xd = offset.vmap().do(cvel)
+
+    return State(q=q, qd=qd, x=x, xd=xd, **data.__dict__)
 
 def build_fd_cache(
-    mx,                   # MuJoCo model wrapper, for jnt_type, jnt_qposadr
+    mx: System,                   # MuJoCo model wrapper, for jnt_type, jnt_qposadr
     dx_ref: mjx.Data,     # reference data object
     target_fields: Optional[Set[str]] = None,
     ctrl_dim: Optional[int] = None,

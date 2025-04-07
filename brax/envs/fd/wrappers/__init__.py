@@ -1,12 +1,14 @@
 import jax
 
-from brax.envs.fd.wrappers import terminal_reward_finger
+from brax.envs.fd.wrappers import terminal_reward_finger, terminal_reward_two_body, terminal_reward_fingers_ball
 from brax.envs.wrappers.terminal_reward import TerminalRewardEpisodeWrapper 
 
 from brax.envs import Env
 
 terminal_rewards = {
     'finger': terminal_reward_finger.terminal_reward,
+    'fingers_ball': terminal_reward_fingers_ball.terminal_reward,
+    'two_body': terminal_reward_two_body.terminal_reward,
 }
 
 def get_terminal_reward_wrapper(

@@ -27,7 +27,7 @@ from brax.training.agents.unroll_apg import networks as apg_networks
 from brax.training import acting
 from brax.training.types import Params
 
-def compute_weighted_and_discounted_reward(
+def compute_discounted_reward(
     truncation: jnp.ndarray,
     termination: jnp.ndarray,
     rewards: jnp.ndarray,
@@ -64,12 +64,13 @@ def compute_apg_loss(
     include_time: bool,
     episode_length: int,
     number: int,
+    deterministic: bool,
     entropy_cost: float,
     discounting: float,
     reward_scaling: float
 ):
     make_policy = apg_networks.make_inference_fn(apg_network)
-    policy = make_policy((normalizer_params, params))
+    policy = make_policy((normalizer_params, params), deterministic=deterministic)
 
     def f(carry, unused_t):
         current_state, current_key = carry
@@ -121,7 +122,7 @@ def compute_apg_loss(
     entropy = jnp.mean(apg_network.parametric_action_distribution.entropy(policy_logits, rng))
     entropy_loss = entropy_cost * -entropy
 
-    v_loss = -compute_weighted_and_discounted_reward(
+    v_loss = -compute_discounted_reward(
         truncation=truncation,
         termination=termination,
         rewards=reward_scaling * ordered_data.reward,

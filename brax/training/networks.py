@@ -63,7 +63,7 @@ class MLP(linen.Module):
       if i != len(self.layer_sizes) - 1 or self.activate_final:
         hidden = self.activation(hidden)
         if self.layer_norm:
-          hidden = linen.LayerNorm()(hidden)
+          hidden = linen.LayerNorm(param_dtype=self.dtype)(hidden)
     return hidden
 
 
@@ -212,7 +212,7 @@ def make_policy_network(
     return policy_module.apply(policy_params, obs)
 
   obs_size = _get_obs_state_size(obs_size, obs_key)
-  dummy_obs = jnp.zeros((1, obs_size))
+  dummy_obs = jnp.zeros((1, obs_size), dtype=dtype)
   return FeedForwardNetwork(
       init=lambda key: policy_module.init(key, dummy_obs), apply=apply
   )
@@ -224,6 +224,7 @@ def make_value_network(
     hidden_layer_sizes: Sequence[int] = (256, 256),
     activation: ActivationFn = linen.relu,
     layer_norm: bool = False,
+    kernel_init: Initializer = jax.nn.initializers.lecun_uniform(),
     obs_key: str = 'state',
     dtype: Dtype = jnp.float32
 ) -> FeedForwardNetwork:
@@ -232,7 +233,7 @@ def make_value_network(
       layer_sizes=list(hidden_layer_sizes) + [1],
       activation=activation,
       layer_norm=layer_norm,
-      kernel_init=jax.nn.initializers.lecun_uniform(),
+      kernel_init=kernel_init,
       dtype=dtype,
   )
 
@@ -244,7 +245,7 @@ def make_value_network(
     return jnp.squeeze(value_module.apply(value_params, obs), axis=-1)
 
   obs_size = _get_obs_state_size(obs_size, obs_key)
-  dummy_obs = jnp.zeros((1, obs_size))
+  dummy_obs = jnp.zeros((1, obs_size), dtype=dtype)
   return FeedForwardNetwork(
       init=lambda key: value_module.init(key, dummy_obs), apply=apply
   )

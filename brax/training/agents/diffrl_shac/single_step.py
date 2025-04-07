@@ -26,12 +26,14 @@ class NetworkTrainingState:
 class TrainingState:
     """Contains training state for the learner."""
     policy_training_state: NetworkTrainingState
+    value_training_state: NetworkTrainingState
     target_value_params: Params
     normalizer_params: running_statistics.RunningStatisticsState
     env_steps: jnp.ndarray
 
 def step(
     environment: envs.Env,
+    include_time: bool = False,
     network_factory: types.NetworkFactory[
               shac_networks.DiffRLSHACNetworks] = shac_networks.make_shac_networks,
     discounting: float = 0.9,
@@ -41,7 +43,9 @@ def step(
     actor_lr: float = 2e-3,
     unroll_length: int = 10,
     batch_size: int = 32,
+    num_minibatches: int = 4,
     betas: Tuple[float, float] = (0.7, 0.95),
+    deterministic_train: bool = False,
     num_envs: int = 1,
     normalize_observations: bool = False,
     episode_length: Optional[int] = None,
@@ -71,12 +75,14 @@ def step(
 
     critic_loss, actor_loss = shac_losses.make_losses(
         shac_network=shac_network,
+        env=env,
+        include_time=include_time,
+        deterministic_train=deterministic_train,
         discounting=discounting,
         reward_scaling=reward_scaling,
         gae_lambda=gae_lambda,
         unroll_length=unroll_length,
-        batch_size=batch_size,
-        num_envs=num_envs
+        number=batch_size * num_minibatches // num_envs,
     )
 
     policy_optimizer = optax.adam(learning_rate=actor_lr, b1=betas[0], b2=betas[1])
@@ -91,7 +97,7 @@ def step(
 
     obs_size = env.observation_size
     normalizer_params = running_statistics.init_state(
-        specs.Array((obs_size,), jnp.dtype('float32'))
+        specs.Array((obs_size,), jnp.dtype('float64'))
     )
 
 
@@ -119,7 +125,6 @@ def step(
             policy_params,
             value_params,
             normalizer_params,
-            env,
             env_state,
             rng,
             optimizer_state=policy_optimizer_state

@@ -120,4 +120,4 @@ def compute_gae(
     advantages = (
         rewards + discount * (1 - termination) * vs_t_plus_1 - values
     ) * truncation_mask
-    return jax.lax.stop_gradient(vs), jax.lax.stop_gradient(advantages)
+    return vs, advantages

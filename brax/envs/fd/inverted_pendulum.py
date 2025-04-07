@@ -45,6 +45,44 @@ class InvertedPendulum(FDEnv):
         self._cart_velocity_weight = cart_velocity_weight
         self._ctrl_cost_weight = ctrl_cost_weight
 
+        def _surrogate_reward(qpos: jax.Array, qvel: jax.Array, action: jax.Array):
+            pole_position_reward = \
+                -self._pole_angle_weight * jnp.pow(qpos[0], 2)
+            pole_velocity_reward = \
+                -self._pole_velocity_weight * jnp.pow(qvel[0], 2)
+
+            cart_position_reward = \
+                -self._cart_position_weight * jnp.pow(qpos[1], 2)
+            cart_velocity_reward = \
+                -self._cart_velocity_weight * jnp.pow(qvel[1], 2)
+
+            ctrl_reward = -self._ctrl_cost_weight * jnp.sum(jnp.square(action))
+
+            return pole_position_reward \
+               + pole_velocity_reward \
+               + cart_position_reward \
+               + cart_velocity_reward \
+               + ctrl_reward
+
+        surrogate_derivative = jax.grad(_surrogate_reward, argnums=(0, 1, 2))
+
+        @jax.custom_vjp
+        def _get_reward(qpos: jax.Array, qvel: jax.Array, action: jax.Array):
+            return 1.0
+
+        def _get_reward_forward(qpos: jax.Array, qvel: jax.Array, u: jnp.ndarray):
+            reward = _get_reward(qpos, qvel, u)
+            return reward, (qpos, qvel, u, reward)
+
+        def _get_reward_backward(res, g):
+            qpos_in, qvel_in, u_in, reward = res
+            d_qpos, d_qvel, d_u = surrogate_derivative(qpos_in, qvel_in, u_in)
+
+            return (d_qpos * g, d_qvel * g, d_u * g)
+
+        _get_reward.defvjp(_get_reward_forward, _get_reward_backward)
+        self.reward_fn = _get_reward
+
         super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
     
     def set_control(self, dx, u):
@@ -87,14 +125,14 @@ class InvertedPendulum(FDEnv):
 
         if self._reward_shaping:
             pole_position_reward = \
-                -self._pole_angle_weight * jnp.pow(dx_next.qpos[1], 2)
+                -self._pole_angle_weight * jnp.pow(dx_next.qpos[0], 2)
             pole_velocity_reward = \
-                -self._pole_velocity_weight * jnp.pow(dx_next.qvel[1], 2)
+                -self._pole_velocity_weight * jnp.pow(dx_next.qvel[0], 2)
 
             cart_position_reward = \
-                -self._cart_position_weight * jnp.pow(dx_next.qpos[0], 2)
+                -self._cart_position_weight * jnp.pow(dx_next.qpos[1], 2)
             cart_velocity_reward = \
-                -self._cart_velocity_weight * jnp.pow(dx_next.qvel[0], 2)
+                -self._cart_velocity_weight * jnp.pow(dx_next.qvel[1], 2)
 
             ctrl_reward = -self._ctrl_cost_weight * jnp.sum(jnp.square(action))
 
@@ -116,7 +154,7 @@ class InvertedPendulum(FDEnv):
                 pipeline_state=dx_next, obs=obs, reward=reward, done=done
             )
 
-        reward = 1.0
+        reward = self.reward_fn(dx_next.qpos, dx_next.qvel, obs)
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward, done=done
         )

@@ -76,7 +76,11 @@ setup(
             "tensorboardX",
             "paramiko",
             "pyyaml", 
-            "argcomplete"
+            "argcomplete",
+            "pandas",
+            "ipykernel",
+            "tbparse",
+            "matplotlib"
         ]
     },
     classifiers=[

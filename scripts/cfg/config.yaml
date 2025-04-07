@@ -1,18 +1,19 @@
 defaults:
   - _self_
-  - env: half_cheetah
-  - alg: diffrl_shac
+  - env: finger
+  - alg: ppo
 
 general:
   logdir: logs
   param_dir: params
-  seed: 42
+  seed: 40
   debug: false
   no_wandb: true
   regular_env: false
+  experiment_name: flip
 
 wandb:
-  project: sweep
+  project: dissertation
   entity: mistry-lab
   group: ${alg.name}
   resume: False

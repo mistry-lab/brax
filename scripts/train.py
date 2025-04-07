@@ -25,6 +25,7 @@ def create_wandb_run(
         entity: str,
         alg_name: str,
         env_name: str,
+        experiment_name: str,
         seed: int,
         job_config: dict, 
         run_id: str,
@@ -32,7 +33,7 @@ def create_wandb_run(
         **kwargs
     ):
 
-    name = f"{alg_name}_{env_name}_sweep_{seed}"
+    name = f"{alg_name}_{env_name}_{experiment_name}_{seed}"
 
     return wandb.init(
         project=project,
@@ -42,6 +43,7 @@ def create_wandb_run(
         sync_tensorboard=True,
         monitor_gym=True,
         save_code=True,
+        tags=[experiment_name],
         name=name,
         id=run_id,
         resume=resume,
@@ -61,7 +63,8 @@ def progress(times: List[datetime], writer: SummaryWriter, num_steps: int, metri
 
     log_scalar = lambda key, value: writer.add_scalar(f"{key}", value, num_steps)
     for key, value in \
-            ((key, value) for key, value in metrics.items() if key.startswith("eval/episode")):
+            ((key, value) for key, value in metrics.items() if \
+                key.startswith("eval/episode") or key.endswith("_loss")):
         log_scalar(key, value.item())
 
     if "training/sps" in metrics:
@@ -134,6 +137,7 @@ def train_with_cfg(cfg: DictConfig):
             entity=cfg.wandb.entity,
             alg_name=cfg.alg.name,
             env_name=cfg.env.name,
+            experiment_name=cfg.general.experiment_name,
             seed=cfg.general.seed,
             job_config=OmegaConf.to_container(cfg, resolve=True),
             run_id=get_time_from_path(hydra_logdir),
@@ -173,8 +177,9 @@ def train_with_cfg(cfg: DictConfig):
 
         kwargs.update(get_network_kwargs(cfg.alg))
 
-    env = get_environment(cfg.env.name) if cfg.general.regular_env \
-        else get_fd_environment(cfg.env.name)
+    env_kwargs = OmegaConf.to_container(cfg.env.kwargs, resolve=True)
+    env = get_environment(cfg.env.name, **env_kwargs) if cfg.general.regular_env \
+        else get_fd_environment(cfg.env.name, **env_kwargs)
 
     make_inference_fn, params, metrics = algorithm_train(
         **cfg.alg.params,

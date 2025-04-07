@@ -13,7 +13,7 @@ params:
   action_repeat: ${env.config.action_repeat}
 
   learning_rate: ${env.ppo.learning_rate}
-  entropy_cost: 1e-2
+  entropy_cost: ${env.config.entropy_cost}
   discounting: ${env.config.discounting} 
   unroll_length: ${env.ppo.unroll_length}
   batch_size: ${env.ppo.batch_size}
@@ -21,11 +21,9 @@ params:
   num_updates_per_batch: ${env.ppo.num_updates_per_batch}
 
   normalize_observations: ${env.config.normalize_observations}
-  reward_scaling: ${env.config.reward_scaling}
+  reward_scaling: ${env.ppo.reward_scaling}
 
   num_evals: ${env.config.num_evals}
-  num_eval_envs: ${env.ppo.num_envs}
+  num_eval_envs: ${env.config.num_eval_envs}
   deterministic_eval: ${env.config.deterministic_eval}
 
-network_factory_params:
-  dtype: ${env.dtype}

@@ -39,7 +39,7 @@ def get_most_recent_parameters_path(address: str, username: str, password: str, 
 def get_config(address: str, remote_training_dir: str, output_filename: str, password: str | None):
     output_config = os.path.join(config_dir, output_filename)
     os.makedirs(output_config, exist_ok=True)
-    subprocess.call(["./sync_config.sh", remote_training_dir / remote_config_filename, output_config, address, password])
+    subprocess.call([".scripts/sync_config.sh", remote_training_dir / remote_config_filename, output_config, address, password])
 
     return os.path.join(output_config, remote_config_filename)
 

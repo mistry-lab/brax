@@ -41,19 +41,16 @@ def compute_td_value(
 ):
     # Append bootstrapped value to get [v1, ..., v_t+1]
     values_t_plus_1 = jnp.concatenate(
-        [values[1:], jnp.expand_dims(jax.lax.stop_gradient(bootstrap_value), 0)], axis=0
+        [values[1:], jnp.expand_dims(bootstrap_value, 0)], axis=0
     )
-    rewards_plus_values = rewards + \
-        jax.lax.stop_gradient(discount * (1 - termination) * values_t_plus_1)
-    rewards_plus_values *= jax.lax.stop_gradient(1 - truncation)
+    rewards_plus_values = rewards + discount * (1 - termination) * values_t_plus_1
+    rewards_plus_values *= (1 - truncation)
 
     acc = jnp.zeros_like(bootstrap_value)
 
     def sum_rewards(carry, target_t):
         reward_plus_value, truncation, termination, value = target_t
-        carry = reward_plus_value + \
-            jax.lax.stop_gradient(discount * (1 - termination)) * carry - \
-            jax.lax.stop_gradient((1 - truncation) * value)
+        carry = reward_plus_value + discount * (1 - termination) * carry - (1 - truncation) * value
         return (carry), (carry)
 
     episode_reward, _ = jax.lax.scan(
@@ -69,7 +66,7 @@ def compute_td_value(
         reverse=True,
     )
 
-    return episode_reward + jax.lax.stop_gradient(values[0])
+    return episode_reward + values[0]
 
 def make_losses(
     shac_network: shac_networks.DiffRLSHACNetworks,
@@ -140,7 +137,10 @@ def make_losses(
         v_error = vs - baseline
         v_loss = jnp.mean(v_error * v_error) * 0.5 * 0.5
 
-        return v_loss, {}
+        return v_loss, {
+            "value_targets": jnp.mean(vs),
+            "baseline": jnp.mean(baseline),
+        }
 
     def actor_loss(
         policy_params: Params,
@@ -151,9 +151,9 @@ def make_losses(
     ):
         policy = make_policy((normalizer_params, policy_params), deterministic=deterministic_train)
 
-        final_state, data = generate_batched_unroll(
+        next_state, data = generate_batched_unroll(
             env=env,
-            env_state=jax.lax.stop_gradient(env_state),
+            env_state=env_state,
             policy=policy,
             key=key,
             unroll_length=unroll_length,
@@ -181,7 +181,7 @@ def make_losses(
 
         terminal_obs = jax.tree_util.tree_map(lambda x: x[-1], ordered_data.next_observation)
         if include_time:
-            terminal_steps = jax.tree_util.tree_map(lambda x: x[-1], data.steps)
+            terminal_steps = jax.tree_util.tree_map(lambda x: x[-1], ordered_data.extras['state_extras']['steps'])
 
             bootstrap_value = value_apply(
                 normalizer_params,
@@ -208,7 +208,7 @@ def make_losses(
         )
 
         return jnp.mean(loss), {
-            "final_state": final_state,
+            "next_state": next_state,
             "data": data
         }
 

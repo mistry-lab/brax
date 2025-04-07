@@ -66,7 +66,7 @@ def _init_training_state(
     optimizer_state = optimizer.init(params)
 
     normalizer_params = running_statistics.init_state(
-        specs.Array((obs_size,), jnp.dtype('float32'))
+        specs.Array((obs_size,), jnp.dtype('float64'))
     )
 
     training_state = TrainingState(
@@ -143,6 +143,7 @@ def train(
     learning_rate: float = 2e-3,
     betas: Tuple[float, float] = (0.7, 0.95),
     # SHAC params
+    deterministic_train: bool = False,
     entropy_cost: float = 1e-4,
     discounting: float = 0.9,
     normalize_observations: bool = False,
@@ -233,7 +234,7 @@ def train(
         normalize = running_statistics.normalize
 
     apg_network = network_factory(
-        environment.observation_size,
+        environment.observation_size + 1 if include_time else environment.observation_size,
         environment.action_size,
         preprocess_observations_fn=normalize)
     make_policy = apg_networks.make_inference_fn(apg_network)
@@ -253,6 +254,7 @@ def train(
         include_time=include_time,
         episode_length=episode_length,
         number=batch_size // num_envs,
+        deterministic=deterministic_train,
         entropy_cost=entropy_cost,
         discounting=discounting,
         reward_scaling=reward_scaling,

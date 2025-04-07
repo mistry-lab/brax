@@ -7,6 +7,7 @@ include_time: ${env.include_time}
 
 network_factory_path: brax.training.agents.diffrl_shac.networks
 make_network_fn_name: make_shac_networks
+make_inference_fn_name: make_inference_fn
 
 params:
   include_time: ${env.include_time}
@@ -36,7 +37,7 @@ params:
   deterministic_train: false
   discounting: ${env.config.discounting}
   normalize_observations: ${env.config.normalize_observations}
-  reward_scaling: ${env.config.reward_scaling}
+  reward_scaling: ${env.diffrl_shac.reward_scaling}
   gae_lambda: ${env.config.gae_lambda}
 
   # eval

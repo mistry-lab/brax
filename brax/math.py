@@ -414,3 +414,11 @@ def vec_quat_mul(u: jax.Array, v: jax.Array) -> jax.Array:
 def relative_quat(q1: jax.Array, q2: jax.Array) -> jax.Array:
   """Returns the relative quaternion from q1 to q2."""
   return quat_mul(q2, quat_inv(q1))
+
+def random_quaternion(key, batch_size):
+    """
+    Generate a random unit quaternion for each element in the batch.
+    """
+    q = jax.random.normal(key, (batch_size, 4))  # Normal distribution for quaternion
+    q /= jp.linalg.norm(q, axis=-1, keepdims=True)  # Normalize to get unit quaternion
+    return q

@@ -7,6 +7,7 @@ include_time: ${env.include_time}
 
 network_factory_path: brax.training.agents.unroll_apg.networks
 make_network_fn_name: make_apg_network
+make_inference_fn_name: make_inference_fn
 
 params:
   include_time: ${env.include_time}
@@ -30,7 +31,7 @@ params:
   entropy_cost: ${env.config.entropy_cost}
   discounting: ${env.config.discounting}
   normalize_observations: ${env.config.normalize_observations}
-  reward_scaling: ${env.config.reward_scaling}
+  reward_scaling: ${env.unroll_apg.reward_scaling}
 
   # eval
   num_evals: ${env.config.num_evals}

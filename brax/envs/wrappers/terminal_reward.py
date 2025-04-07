@@ -19,13 +19,16 @@ class TerminalRewardEpisodeWrapper(EpisodeWrapper):
         state = super().step(state, action, flag)
         next_steps = state.info['steps'] + self.action_repeat
 
+        one = jnp.ones_like(state.done)
         state = state.replace(
             reward=jnp.where(
                 next_steps >= self.episode_length,
                 self.terminal_reward(state.pipeline_state, action).reward,
                 state.reward,
             ),
-            metrics=state.metrics
+            done=jnp.where(
+                next_steps >= self.episode_length, one, state.done
+            )
         )
 
         return state

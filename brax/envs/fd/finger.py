@@ -14,6 +14,105 @@ class Finger(FDEnv):
         sys = mjcf.load(path)
         super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl", "sensordata"}, **kwargs)
 
+        def logistic(number):
+            return 1 / (1 + jnp.exp(20 * (number + 1.)))
+        
+        def inverse_logistic(number):
+            return 1 / (1 + jnp.exp(- 20 * (number - 1.)))
+
+        def _surrogate_reward(
+            qpos: jax.Array,
+            qvel: jax.Array,
+            p_finger: jax.Array,
+            p_target: jax.Array,
+            touch: jax.Array,
+            action: jax.Array
+        ):
+            pos_finger = - (qpos[2] + jnp.pi / 2) ** 2
+
+            target_dist = jnp.sum((p_finger - p_target)**2)
+            # touch_reward = 0.001 * touch * pos_finger **2
+            speed_reward = - qvel[2]
+
+            # ctrl_reward = 0.5 - jnp.sum(action ** 2)
+            ctrl_reward = - logistic(action[0]) - logistic(action[1])
+            ctrl_reward += - inverse_logistic(action[0]) - inverse_logistic(action[1])
+
+            movement_reward = jnp.where(
+                touch == 1,
+                jnp.sum(action ** 2),
+                0.0
+            )
+
+            return 10 * movement_reward + ctrl_reward + pos_finger
+
+        surrogate_derivative = jax.grad(_surrogate_reward, argnums=(0, 1, 2, 3, 4, 5))
+
+        @jax.custom_vjp
+        def _get_reward(
+            qpos: jax.Array,
+            qvel: jax.Array,
+            p_finger: jax.Array,
+            p_target: jax.Array,
+            touch: jax.Array,
+            action: jax.Array
+        ):
+            # pos_finger = qpos[2]
+
+            # target_reward = - 1.0 * jnp.sum((p_finger - p_target)**2)
+            # touch_reward = - 0.001 * touch * pos_finger **2
+            ctrl_reward = - 0.00001 * jnp.sum(action ** 2)
+
+            reward = ctrl_reward
+
+            return reward, {}
+
+        def _get_reward_forward(
+            qpos: jax.Array,
+            qvel: jax.Array,
+            p_finger: jax.Array,
+            p_target: jax.Array,
+            touch: jax.Array,
+            action: jax.Array
+        ):
+            reward = _get_reward(qpos, qvel, p_finger, p_target, touch, action)
+            return reward, (qpos, qvel, p_finger, p_target, touch, action, reward)
+
+        def _get_reward_backward(res, g):
+            qpos_in, qvel_in, pfinger_in, ptarget_in, touch_in, u_in, reward = res
+            
+            d_qpos, d_qvel, d_pfinger, d_ptarget, d_touch, d_u = surrogate_derivative(
+                qpos_in,
+                qvel_in,
+                pfinger_in,
+                ptarget_in,
+                touch_in,
+                u_in,
+            )
+
+            # clamp_value = 0.1
+
+            # d_qpos = jnp.clip(d_qpos, -clamp_value, clamp_value)
+            # d_qvel = jnp.clip(d_qvel, -clamp_value, clamp_value)
+            # d_pfinger = jnp.clip(d_pfinger, -clamp_value, clamp_value)
+            # d_ptarget = jnp.clip(d_ptarget, -clamp_value, clamp_value)
+            # d_touch = jnp.clip(d_touch, -clamp_value, clamp_value)
+            # d_u = jnp.clip(d_u, -clamp_value, clamp_value)
+
+            g_reward, g_metrics = g
+
+            return (
+                d_qpos * g_reward,
+                d_qvel * g_reward,
+                d_pfinger * g_reward,
+                d_ptarget * g_reward,
+                d_touch * g_reward,
+                d_u * g_reward
+            )
+
+        _get_reward.defvjp(_get_reward_forward, _get_reward_backward)
+        self.reward_fn = _get_reward
+
     def _angle_axis_to_quaternion(self, angle_axis):
         """
         Converts an angle-axis vector to a quaternion.
@@ -61,7 +160,6 @@ class Finger(FDEnv):
         metrics = {
             'reward_target': zero,
             'reward_ctrl': zero,
-            'reward_touch': zero,
         }
 
         return State(dx0, obs, reward, done, metrics)
@@ -70,35 +168,23 @@ class Finger(FDEnv):
         dx_next = self.step_fn(state.pipeline_state, u)
         obs = self._get_observation(dx_next)
 
-        pos_finger = dx_next.qpos[2]
-        u = dx_next.ctrl
-
         touch = dx_next.sensordata[0]
         p_finger = dx_next.sensordata[1:4]
         p_target = dx_next.sensordata[4:7]
 
-        touch_reward = - 0.001 * touch * pos_finger **2
-
-        if flag:
-            state.metrics.update(
-                reward_target = jnp.zeros_like(touch_reward),
-                reward_ctrl = jnp.zeros_like(touch_reward),
-                reward_touch = touch_reward
-            )
-
-            return state.replace(
-                pipeline_state=dx_next, obs=obs, reward=reward
-            )
-
-        target_reward = - 0.1 * jnp.sum((p_finger - p_target)**2)
-        ctrl_reward = - 0.00005 * jnp.sum(u ** 2)
-        reward = target_reward + ctrl_reward + touch_reward
-
-        state.metrics.update(
-            reward_target = target_reward,
-            reward_ctrl = ctrl_reward,
-            reward_touch = touch_reward
+        reward, metrics = self.reward_fn(
+            dx_next.qpos,
+            dx_next.qvel,
+            p_finger,
+            p_target,
+            touch,
+            dx_next.ctrl
         )
+
+        # state.metrics.update(
+        #     reward_target=metrics["reward_target"],
+        #     reward_ctrl=metrics["reward_ctrl"],
+        # )
 
         return state.replace(
             pipeline_state=dx_next, obs=obs, reward=reward

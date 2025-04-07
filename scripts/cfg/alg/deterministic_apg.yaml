@@ -7,6 +7,7 @@ include_time: ${env.include_time}
 
 network_factory_path: brax.training.agents.deterministic_apg.networks
 make_network_fn_name: make_apg_network
+make_inference_fn_name: make_inference_fn
 
 params:
   include_time: ${env.include_time}

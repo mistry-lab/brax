@@ -66,7 +66,7 @@ def _init_training_state(
     optimizer_state = optimizer.init(params)
 
     normalizer_params = running_statistics.init_state(
-        specs.Array((obs_size,), jnp.dtype('float32'))
+        specs.Array((obs_size,), jnp.dtype('float64'))
     )
 
     training_state = TrainingState(
@@ -232,7 +232,7 @@ def train(
         normalize = running_statistics.normalize
 
     apg_network = network_factory(
-        environment.observation_size,
+        environment.observation_size + 1 if include_time else environment.observation_size,
         environment.action_size,
         preprocess_observations_fn=normalize)
     make_policy = apg_networks.make_inference_fn(apg_network)

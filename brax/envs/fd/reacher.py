@@ -18,6 +18,7 @@
 Based on the OpenAI Gym MuJoCo Reacher environment.
 """
 
+import functools
 from typing import Tuple
 
 from brax import base
@@ -155,9 +156,44 @@ class Reacher(FDEnv):
   # pyformat: enable
 
 
-  def __init__(self, backend='generalized', **kwargs):
+  def __init__(self, **kwargs):
     path = epath.resource_path('brax') / 'envs/assets/fd/reacher.xml'
     sys = mjcf.load(path)
+
+    def _surrogate_reward(obs: jax.Array, action: jax.Array):
+      reward_dist = -jp.sum(jp.square(obs[-3:]))
+      reward_ctrl = -jp.square(action).sum()
+
+      return reward_ctrl + reward_dist
+
+    surrogate_derivative = jax.grad(_surrogate_reward, argnums=(0, 1))
+
+    @jax.custom_vjp
+    def _get_reward(obs: jax.Array, action: jax.Array):
+        # vector from tip to target is last 3 entries of obs vector
+        reward_dist = -jp.linalg.norm(obs[-3:])
+        reward_ctrl = -jp.square(action).sum()
+        reward =  reward_dist + reward_ctrl
+
+        return reward, {
+           "dist_reward": reward_dist,
+           "ctrl_reward": reward_ctrl
+        }
+
+    def _get_reward_forward(obs: jax.Array, action: jax.Array):
+        reward, metrics = _get_reward(obs, action)
+        return (reward, metrics), (obs, action, reward)
+
+    def _get_reward_backward(res, g):
+        obs, action, reward = res
+        d_obs, d_action = surrogate_derivative(obs, action)
+
+        g_reward, g_metrics = g
+
+        return (d_obs * g_reward, d_action * g_reward)
+
+    _get_reward.defvjp(_get_reward_forward, _get_reward_backward)
+    self.reward_fn = _get_reward
 
     super().__init__(sys=sys, target_fields={"qpos", "qvel", "ctrl"}, **kwargs)
 
@@ -190,14 +226,11 @@ class Reacher(FDEnv):
     pipeline_state = self.step_fn(state.pipeline_state, action)
     obs = self._get_obs(pipeline_state)
 
-    # vector from tip to target is last 3 entries of obs vector
-    reward_dist = -math.safe_norm(obs[-3:])
-    reward_ctrl = -jp.square(action).sum()
-    reward = reward_dist + reward_ctrl
+    reward, metrics = self.reward_fn(obs, action)
 
     state.metrics.update(
-        reward_dist=reward_dist,
-        reward_ctrl=reward_ctrl,
+        reward_dist=metrics["dist_reward"],
+        reward_ctrl=metrics["ctrl_reward"],
     )
 
     return state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward)
@@ -211,7 +244,7 @@ class Reacher(FDEnv):
         .do(base.Transform.create(pos=jp.array([0.11, 0, 0])))
         .pos
     )
-    # tip_vel, instead of pipeline_state.qd[:2], leads to more sensible policies
+    # tip_vel, instead of pipeline_state.qd[:2], leads to morereward_dist sensible policies
     # for a randomly initialized policy network
     tip_vel = (
         base.Transform.create(pos=jp.array([0.11, 0, 0]))
